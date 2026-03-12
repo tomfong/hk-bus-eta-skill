@@ -14,12 +14,6 @@ The publishable skill package is located in the [`hk-bus-eta/`](hk-bus-eta/) fol
 
 See [hk-bus-eta/README.md](hk-bus-eta/README.md) for full documentation.
 
-## Quick Install (Clawhub) **(Not Yet Available)**
-
-```bash
-claw skill install tomfong/hk-bus-eta
-```
-
 ## License
 
 MIT License - See [LICENSE](hk-bus-eta/LICENSE) for details.

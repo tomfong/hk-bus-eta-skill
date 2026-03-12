@@ -20,12 +20,6 @@ This skill provides real-time Hong Kong bus ETA queries for KMB, LWB, and Citybu
 - Python 3.x
 - `curl` (for API calls)
 
-## Installation (Clawhub)
-
-```bash
-claw skill install tomfong/hk-bus-eta
-```
-
 ## Usage
 
 Ask your OpenClaw agent:
