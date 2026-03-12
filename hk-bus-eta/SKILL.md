@@ -46,6 +46,7 @@ Query real-time Hong Kong bus ETAs, or match the most likely boarding stop using
 - Do not add operator timing tags for non-joint-operation routes
 - Add operator timing tags only when showing merged joint-operation results
 - ETA format: `HH:mm [min remaining]`
+- Do not manually merge or alter the output structure returned by the helper script. Present the script's textual grouping exactly as generated to avoid mixing ETAs from different physical stops.
 - Group results by destination and show up to 3 upcoming buses per group
 
 ## Error handling
