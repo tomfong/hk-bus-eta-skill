@@ -6,6 +6,7 @@ import concurrent.futures
 from urllib.request import urlopen, Request
 from datetime import datetime, timezone, timedelta
 
+# Configuration
 BASE_DIR = "/home/admin/.openclaw/workspace/skills/hk-bus-eta/scripts"
 CACHE_FILE_KMB = os.path.join(BASE_DIR, "kmb_stops.json")
 CACHE_EXPIRY = 12 * 3600
@@ -27,19 +28,18 @@ def fetch_api(url):
     except: return None
 
 def get_cached_kmb_stops():
-    path = CACHE_FILE_KMB
-    if os.path.exists(path):
-        with open(path, 'r') as f:
+    if os.path.exists(CACHE_FILE_KMB):
+        with open(CACHE_FILE_KMB, 'r') as f:
             cache = json.load(f)
         now_ts = time.time()
-        now_struct = time.localtime(now_ts)
         if now_ts - cache['ts'] < CACHE_EXPIRY:
-            if not (now_struct.tm_hour >= 5 and time.localtime(cache['ts']).tm_mday != now_struct.tm_mday):
+            last_dt = datetime.fromtimestamp(cache['ts'], timezone(timedelta(hours=8)))
+            now_dt = datetime.fromtimestamp(now_ts, timezone(timedelta(hours=8)))
+            if not (now_dt.hour >= 5 and last_dt.day != now_dt.day):
                 return {s['stop']: s for s in cache['data']}
-    
     res = fetch_api("https://data.etabus.gov.hk/v1/transport/kmb/stop")
     if res and 'data' in res:
-        with open(path, 'w') as f:
+        with open(CACHE_FILE_KMB, 'w') as f:
             json.dump({"ts": time.time(), "data": res['data']}, f)
         return {s['stop']: s for s in res['data']}
     return {}
@@ -49,12 +49,9 @@ def fetch_stop_info(op, stop_id):
     res = fetch_api(url)
     return res['data'] if res and 'data' in res else None
 
-def fetch_route_info(op, route, bound=None):
-    if op == 'kmb':
-        b = bound if bound else 'outbound'
-        url = f"https://data.etabus.gov.hk/v1/transport/kmb/route/{route}/{b}/1"
-    else:
-        url = f"https://rt.data.gov.hk/v2/transport/citybus/route/CTB/{route}"
+def fetch_route_info(op, route):
+    op_upper = op.upper()
+    url = f"https://data.etabus.gov.hk/v1/transport/kmb/route/{route}/outbound/1" if op == 'kmb' else f"https://rt.data.gov.hk/v2/transport/citybus/route/{op_upper}/{route}"
     res = fetch_api(url)
     return res['data'] if res and 'data' in res else {}
 
@@ -82,11 +79,15 @@ def format_eta(eta_str):
 def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
     is_joint = any(route.startswith(p) for p in ["1", "3", "6", "9", "N"])
     kmb_stops_dict = get_cached_kmb_stops()
-    
     ops_bounds = [('kmb', 'outbound'), ('kmb', 'inbound'), ('ctb', 'outbound'), ('ctb', 'inbound')]
     with concurrent.futures.ThreadPoolExecutor() as executor:
         rs_results = list(executor.map(lambda x: fetch_route_stops(x[0], route, x[1]), ops_bounds))
     
+    # Store max sequence count per (operator, bound) to identify final stop
+    max_seqs = {}
+    for i, (op, bound) in enumerate(ops_bounds):
+        if rs_results[i]: max_seqs[(op, bound)] = max(int(r['seq']) for r in rs_results[i])
+
     tasks = []
     for i, (op, bound) in enumerate(ops_bounds):
         rs = rs_results[i]
@@ -96,52 +97,44 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
             for r in rs:
                 s_info = kmb_stops_dict.get(r['stop'])
                 if s_info:
-                    s_info_copy = s_info.copy()
-                    s_info_copy['_seq'] = int(r.get('seq', 0))
-                    s_info_copy['_bound'] = bound
-                    if u_lat and u_lon: s_info_copy['_dist'] = get_dist(u_lat, u_lon, s_info_copy['lat'], s_info_copy['long'])
-                    candidates.append(s_info_copy)
+                    s = s_info.copy()
+                    s['_seq'] = int(r.get('seq', 0))
+                    s['_bound'] = bound
+                    if u_lat and u_lon: s['_dist'] = get_dist(u_lat, u_lon, s['lat'], s['long'])
+                    candidates.append(s)
         else:
             stop_ids = [r['stop'] for r in rs]
             with concurrent.futures.ThreadPoolExecutor() as exec2:
                 ctb_infos = list(exec2.map(lambda sid: fetch_stop_info('ctb', sid), stop_ids))
             for idx, sinfo in enumerate(ctb_infos):
                 if sinfo:
-                    sinfo_copy = sinfo.copy()
-                    sinfo_copy['_seq'] = int(rs[idx].get('seq', 0))
-                    sinfo_copy['_bound'] = bound
-                    if u_lat and u_lon: sinfo_copy['_dist'] = get_dist(u_lat, u_lon, sinfo_copy['lat'], sinfo_copy['long'])
-                    candidates.append(sinfo_copy)
+                    s = sinfo.copy()
+                    s['_seq'] = int(rs[idx].get('seq', 0))
+                    s['_bound'] = bound
+                    if u_lat and u_lon: s['_dist'] = get_dist(u_lat, u_lon, s['lat'], s['long'])
+                    candidates.append(s)
 
         if not candidates: continue
-        matched = []
         p = pattern.lower()
-        if p == "總站" or p == "terminus":
-            matched = [candidates[0], candidates[-1]]
+        matched = []
+        if p == "總站" or p == "terminus": matched = [candidates[0], candidates[-1]]
         else:
             for s in candidates:
-                name_field = s.get('name_en', '').lower() if lang == "en" else s.get('name_tc', '').lower()
-                if p in name_field: matched.append(s)
-        if not matched:
-            matched = sorted(candidates, key=lambda x: x.get('_dist', 9999))[:1]
+                name = s.get('name_en' if lang=="en" else 'name_tc', '').lower()
+                if p in name: matched.append(s)
+        if not matched: matched = sorted(candidates, key=lambda x: x.get('_dist', 9999))[:1]
+        
+        # New: Filter out final stop (terminus arrival)
         for s in matched:
-            tasks.append((op, s['stop'], route, s))
+            if s['_seq'] < max_seqs.get((op, bound), 999):
+                tasks.append((op, s['stop'], route, s))
 
     if not tasks:
-        print("No route or stop found." if lang == "en" else f"⚠️ 搵唔到路線 {route} 或站名 {pattern}。")
+        print("No route or stop found." if lang == "en" else "⚠️ 搵唔到路線或車站數據（或該站為終點落客站）。")
         return
 
-    # Cache route metadata for origin names
-    route_origins = {}
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        unique_op_bounds = list(set((t[0], t[3]['_bound']) for t in tasks))
-        meta_results = list(executor.map(lambda x: fetch_route_info(x[0], route, x[1]), unique_op_bounds))
-        for idx, (op, b) in enumerate(unique_op_bounds):
-            m = meta_results[idx]
-            if not m: continue
-            # Unified origin logic for KMB and CTB
-            route_origins[(op, b)] = m.get('dest_tc') if b == 'inbound' else m.get('orig_tc')
-
+    route_info_kmb = fetch_route_info('kmb', route)
+    route_info_ctb = fetch_route_info('ctb', route)
     merged_results = {}
     with concurrent.futures.ThreadPoolExecutor() as executor:
         eta_results = list(executor.map(lambda x: fetch_eta(x[0], x[1], x[2]), tasks))
@@ -151,28 +144,28 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
             group_key = None
             for key in merged_results.keys():
                 klat, klon = map(float, key.split(','))
-                if get_dist(lat, lon, klat, klon) < 0.1:
+                if get_dist(lat, lon, klat, klon) < 0.15:
                     group_key = key
                     break
             if not group_key:
                 group_key = f"{lat},{lon}"
-                name = s_info['name_en'] if lang == "en" else s_info['name_tc']
+                name = s_info['name_en' if lang=="en" else 'name_tc']
                 merged_results[group_key] = {"name": name, "lat": lat, "lon": lon, "seq": s_info.get('_seq'), "bound": s_info.get('_bound'), "etas": {}, "ops": set()}
             merged_results[group_key]['ops'].add(op)
             for e in eta_data:
-                d = e.get('dest_en') if lang == "en" else e.get('dest_tc', '未知')
+                d = e.get('dest_en' if lang=="en" else 'dest_tc', '未知')
                 f_eta = format_eta(e['eta'])
-                if f_eta:
+                if f_eta and not any(x['raw']['ts'] == f_eta['ts'] for x in merged_results[group_key]['etas'].get(d, [])):
                     if d not in merged_results[group_key]['etas']: merged_results[group_key]['etas'][d] = []
-                    merged_results[group_key]['etas'][d].append({"raw": f_eta, "op": op, "bound": e.get('dir')})
+                    merged_results[group_key]['etas'][d].append({"raw": f_eta, "op": op, "dir": e.get('dir')})
 
     for g in merged_results.values():
         is_actual_joint = "kmb" in g['ops'] and "ctb" in g['ops']
-        op_primary = list(g['ops'])[0]
-        prefix = "KMB" if op_primary == 'kmb' else "CTB"
-        if lang != "en": prefix = "九巴" if op_primary == "kmb" else "城巴"
-        if is_actual_joint: prefix = "KMB/CTB Joint" if lang == "en" else "九巴/城巴聯營"
-
+        op_for_meta = "kmb" if "kmb" in g['ops'] else "ctb"
+        r_meta = route_info_kmb if op_for_meta == "kmb" else route_info_ctb
+        prefix = "KMB" if "kmb" in g['ops'] else "CTB"
+        if lang != "en": prefix = "九巴 (KMB)" if "kmb" in g['ops'] else "城巴 (CTB)"
+        if is_actual_joint: prefix = "KMB/CTB Joint-op" if lang == "en" else "九巴 (KMB)/城巴 (CTB) 聯營"
         print(f"🚌 **{prefix} {route}** @ {g['name']} [📍地圖](https://www.google.com/maps?q={g['lat']},{g['lon']})")
         for d, etas in g['etas'].items():
             sorted_etas = sorted(etas, key=lambda x: x['raw']['ts'])[:3]
@@ -180,30 +173,19 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
             for se in sorted_etas:
                 s = f"{se['raw']['str']} ({se['raw']['min']} min)"
                 if is_actual_joint:
-                    op_label = "KMB Cycle" if se['op'] == "kmb" else "CTB Cycle"
-                    if lang != "en":
-                        op_label = "九巴時段" if se['op'] == "kmb" else "城巴時段"
-                    s += f" [{op_label}]"
+                    ol = "KMB" if se['op'] == "kmb" else "CTB"
+                    if lang != "en": ol = "九巴 (KMB)" if se['op'] == "kmb" else "城巴 (CTB)"
+                    s += f" [{ol}]"
                 time_strs.append(s)
-            
-            # Fetch Origin
-            origin_name = "起點"
-            # Try to match the bound of this specific destination set
-            target_bound = sorted_etas[0]['bound'] # Use direction from first ETA
-            if target_bound == 'O': b_key = 'outbound'
-            elif target_bound == 'I': b_key = 'inbound'
-            else: b_key = g['bound']
-            
-            origin_name = route_origins.get((op_primary, b_key), "起點")
-            
-            sep = "To" if lang == "en" else "往"
-            print(f"• {origin_name} {sep} {d}: " + ", ".join(time_strs))
-        if not g['etas']:
-            print("- No ETA / Out of Service" if lang == "en" else "- 暫時無班次資料 / 日間線已停駛")
+            bound = sorted_etas[0]['dir']
+            if lang != "en": origin = r_meta.get('dest_tc') if bound == 'I' else r_meta.get('orig_tc')
+            else: origin = r_meta.get('dest_en') if bound == 'I' else r_meta.get('orig_en')
+            print(f"• {origin} {'To' if lang=='en' else '往'} {d}: " + ", ".join(time_strs))
+        if not g['etas']: print("- No Data / Out of service" if lang == "en" else "- 暫時無資料 / 日間線已停駛")
         print()
 
 if __name__ == "__main__":
     import sys
     args = sys.argv[1:]
     if len(args) >= 2:
-        main(args[0], args[1], args[2] if len(args) > 2 and args[2] != "None" else None, args[3] if len(args) > 3 and args[3] != "None" else None, args[4] if len(args) > 4 else "tc")
+        main(args[0], args[1], args[2] if len(args)>2 and args[2]!="None" else None, args[3] if len(args)>3 and args[3]!="None" else None, args[4] if len(args)>4 else "tc")
