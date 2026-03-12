@@ -1,12 +1,10 @@
-# HK Bus ETA Skill for OpenClaw (BETA)
+# Hong Kong Bus ETA Skill for AI Agents (BETA)
 
-Author: Tom Fong
-
-GitHub: https://github.com/tomfong
+Author: [Tom FONG](https://github.com/tomfong) (with "Mr. Usagi" - Tom's OpenClaw Agent) 
 
 > **BETA**: This skill is under active development and may change. Use with caution in production environments.
 
-This repository contains the **hk-bus-eta** skill for OpenClaw, providing real-time Hong Kong bus ETA queries.
+This repository contains the **hk-bus-eta** skill for OpenClaw's or other AI agents, providing real-time Hong Kong bus ETA queries.
 
 ## Skill Package
 
