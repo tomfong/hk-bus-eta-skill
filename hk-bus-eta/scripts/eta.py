@@ -1,3 +1,14 @@
+"""
+Hong Kong Bus ETA Query Script
+Version: 0.1.1
+
+Changelog:
+- 2026-03-12 18:33 (by Agent): When exact match found, only output matched stops (suppress fuzzy matches)
+- 2026-03-12 18:33 (by Agent): Added ★ symbol to highlight exact matched stops
+- 2026-03-12 18:27 (by Agent): Exact match priority for stop name
+- 2026-03-12 18:18 (by Agent): Origin/Terminus labels added
+"""
+
 import json
 import os
 import time
@@ -77,18 +88,18 @@ def format_eta(eta_str):
     except: return None
 
 def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
-    is_joint = any(route.startswith(p) for p in ["1", "3", "6", "9", "N"])
     kmb_stops_dict = get_cached_kmb_stops()
     ops_bounds = [('kmb', 'outbound'), ('kmb', 'inbound'), ('ctb', 'outbound'), ('ctb', 'inbound')]
     with concurrent.futures.ThreadPoolExecutor() as executor:
         rs_results = list(executor.map(lambda x: fetch_route_stops(x[0], route, x[1]), ops_bounds))
     
-    # Store max sequence count per (operator, bound) to identify final stop
     max_seqs = {}
     for i, (op, bound) in enumerate(ops_bounds):
         if rs_results[i]: max_seqs[(op, bound)] = max(int(r['seq']) for r in rs_results[i])
 
     tasks = []
+    has_exact_match = False# 2026-03-12 18:33 (by Agent): Track if exact match found
+    
     for i, (op, bound) in enumerate(ops_bounds):
         rs = rs_results[i]
         if not rs: continue
@@ -98,7 +109,7 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
                 s_info = kmb_stops_dict.get(r['stop'])
                 if s_info:
                     s = s_info.copy()
-                    s['_seq'] = int(r.get('seq', 0))
+                    s['_seq'] = int(r.get('seq', 1))
                     s['_bound'] = bound
                     if u_lat and u_lon: s['_dist'] = get_dist(u_lat, u_lon, s['lat'], s['long'])
                     candidates.append(s)
@@ -109,7 +120,7 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
             for idx, sinfo in enumerate(ctb_infos):
                 if sinfo:
                     s = sinfo.copy()
-                    s['_seq'] = int(rs[idx].get('seq', 0))
+                    s['_seq'] = int(rs[idx].get('seq', 1))
                     s['_bound'] = bound
                     if u_lat and u_lon: s['_dist'] = get_dist(u_lat, u_lon, s['lat'], s['long'])
                     candidates.append(s)
@@ -117,20 +128,29 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
         if not candidates: continue
         p = pattern.lower()
         matched = []
-        if p == "總站" or p == "terminus": matched = [candidates[0], candidates[-1]]
+        if p == "總站" or p == "terminus": 
+            matched = [candidates[0], candidates[-1]]
         else:
-            for s in candidates:
-                name = s.get('name_en' if lang=="en" else 'name_tc', '').lower()
-                if p in name: matched.append(s)
+            # 2026-03-12 18:33 (by Agent): Check exact match first
+            exact = [s for s in candidates if p == s.get('name_en', '').lower() or p == s.get('name_tc', '').lower()]
+            if exact:
+                matched = exact
+                has_exact_match = True
+            else:
+                for s in candidates:
+                    name = s.get('name_en' if lang=="en" else 'name_tc', '').lower()
+                    if p in name: matched.append(s)
+        
         if not matched: matched = sorted(candidates, key=lambda x: x.get('_dist', 9999))[:1]
         
-        # New: Filter out final stop (terminus arrival)
-        for s in matched:
-            if s['_seq'] < max_seqs.get((op, bound), 999):
-                tasks.append((op, s['stop'], route, s))
+        # 2026-03-12 18:33 (by Agent): Only add tasks if exact match or no exact match found yet
+        if not has_exact_match or (has_exact_match and matched and any(p == s.get('name_en', '').lower() or p == s.get('name_tc', '').lower() for s in matched)):
+            for s in matched:
+                s['_is_exact'] = has_exact_match and any(p == s.get('name_en', '').lower() or p == s.get('name_tc', '').lower() for s in matched)
+                tasks.append((op, s['stop'], route, s, bound))
 
     if not tasks:
-        print("No route or stop found." if lang == "en" else "⚠️ 搵唔到路線或車站數據（或該站為終點落客站）。")
+        print("No route or stop found." if lang == "en" else "⚠️ 搵唔到路線或車站數據。")
         return
 
     route_info_kmb = fetch_route_info('kmb', route)
@@ -138,26 +158,28 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
     merged_results = {}
     with concurrent.futures.ThreadPoolExecutor() as executor:
         eta_results = list(executor.map(lambda x: fetch_eta(x[0], x[1], x[2]), tasks))
-        for i, (op, stop_id, r, s_info) in enumerate(tasks):
+        for i, (op, stop_id, r, s_info, bound) in enumerate(tasks):
             eta_data = [e for e in eta_results[i] if e.get('eta')]
             lat, lon = float(s_info['lat']), float(s_info['long'])
             group_key = None
             for key in merged_results.keys():
                 klat, klon = map(float, key.split(','))
-                if get_dist(lat, lon, klat, klon) < 0.15:
+                if get_dist(lat, lon, klat, klon) < 0.08:
                     group_key = key
                     break
             if not group_key:
                 group_key = f"{lat},{lon}"
                 name = s_info['name_en' if lang=="en" else 'name_tc']
-                merged_results[group_key] = {"name": name, "lat": lat, "lon": lon, "seq": s_info.get('_seq'), "bound": s_info.get('_bound'), "etas": {}, "ops": set()}
+                merged_results[group_key] = {"name": name, "lat": lat, "lon": lon, "etas": {}, "ops": set(), "is_exact": s_info.get('_is_exact', False)}
             merged_results[group_key]['ops'].add(op)
             for e in eta_data:
                 d = e.get('dest_en' if lang=="en" else 'dest_tc', '未知')
                 f_eta = format_eta(e['eta'])
                 if f_eta and not any(x['raw']['ts'] == f_eta['ts'] for x in merged_results[group_key]['etas'].get(d, [])):
                     if d not in merged_results[group_key]['etas']: merged_results[group_key]['etas'][d] = []
-                    merged_results[group_key]['etas'][d].append({"raw": f_eta, "op": op, "dir": e.get('dir')})
+                    is_start = s_info['_seq'] == 1
+                    is_end = s_info['_seq'] == max_seqs.get((op, bound), 0)
+                    merged_results[group_key]['etas'][d].append({"raw": f_eta, "op": op, "dir": e.get('dir'), "is_start": is_start, "is_end": is_end})
 
     for g in merged_results.values():
         is_actual_joint = "kmb" in g['ops'] and "ctb" in g['ops']
@@ -166,7 +188,9 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
         prefix = "KMB" if "kmb" in g['ops'] else "CTB"
         if lang != "en": prefix = "九巴 (KMB)" if "kmb" in g['ops'] else "城巴 (CTB)"
         if is_actual_joint: prefix = "KMB/CTB Joint-op" if lang == "en" else "九巴 (KMB)/城巴 (CTB) 聯營"
-        print(f"🚌 **{prefix} {route}** @ {g['name']} [📍地圖](https://www.google.com/maps?q={g['lat']},{g['lon']})")
+        # 2026-03-12 18:33 (by Agent): Add ★ for exact match
+        exact_marker = " ★" if g.get('is_exact') else ""
+        print(f"🚌 **{prefix} {route}** @ {g['name']}{exact_marker} [📍地圖](https://www.google.com/maps?q={g['lat']},{g['lon']})")
         for d, etas in g['etas'].items():
             sorted_etas = sorted(etas, key=lambda x: x['raw']['ts'])[:3]
             time_strs = []
@@ -176,6 +200,8 @@ def main(route, pattern, u_lat=None, u_lon=None, lang="tc"):
                     ol = "KMB" if se['op'] == "kmb" else "CTB"
                     if lang != "en": ol = "九巴 (KMB)" if se['op'] == "kmb" else "城巴 (CTB)"
                     s += f" [{ol}]"
+                if se['is_start']: s += " [起點站]" if lang != "en" else " [Origin]"
+                if se['is_end']: s += " [終點站]" if lang != "en" else " [Terminus]"
                 time_strs.append(s)
             bound = sorted_etas[0]['dir']
             if lang != "en": origin = r_meta.get('dest_tc') if bound == 'I' else r_meta.get('orig_tc')
