@@ -1,7 +1,22 @@
 ---
 name: hk-bus-eta
+version: 0.1.0
+author: Tom Fong
 description: Query Hong Kong bus ETA for 九巴/KMB, 龍運/LWB, and 城巴/Citybus/CTB, with joint-operation merging, location-aware stop matching, and stop cache.
-metadata: {"openclaw":{"emoji":"🚌","requires":{"bins":["python3","curl"]}}}
+metadata:
+  openclaw:
+    emoji: 🚌
+    category: transport
+    tags:
+      - hongkong
+      - bus
+      - eta
+      - kmb
+      - ctb
+    requires:
+      bins:
+        - python3
+        - curl
 user-invocable: true
 ---
 
