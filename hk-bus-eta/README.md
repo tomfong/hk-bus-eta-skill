@@ -147,7 +147,7 @@ First stable release.
 - Destination fuzzy merge
 - Multi-name support
 - Terminus marking
-- LWB support
+- KMB/CTB/LWB support
 - Auto background sync (7-day cycle)
 - Auto initialization on first run
 - 30s timeout enforcement
