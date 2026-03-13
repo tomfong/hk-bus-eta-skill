@@ -1,13 +1,13 @@
 """
 Hong Kong Bus ETA Query Script
-Version: 0.2.5 (Real-time Stop Discovery)
+Version: 1.0.0
+Created: 2026-03-13 (by "Mr. Usagi - Tom's Agent")
 
 Changelog:
-- 2026-03-13 01:45 (by "Mr. Usagi"): Fixed missing CTB ETAs by real-time fetching ALL route stops from CTB API.
-- No longer relies on pre-built cache for CTB - ensures all stops are discovered.
-- 15s Golden Rule timeout enforced.
+- 2026-03-13 (v1.0.0): First stable release. Supports KMB/CTB/LWB with smart location association, coordinate clustering, destination fuzzy merge, terminus marking, circular route handling, and auto background sync.
+- 30s Golden Rule timeout enforced.
 """
-import json, os, time, math, sqlite3, concurrent.futures
+import json, os, time, math, sqlite3, subprocess, sys
 from urllib.request import urlopen, Request
 from datetime import datetime, timezone, timedelta
 
@@ -52,20 +52,15 @@ def get_kmb_stops():
     return d
 
 def get_ctb_route_stops_realtime(route, direction):
-    """Fetch ALL CTB stops for a route in REAL-TIME with coordinates."""
     url = f"https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/{route}/{direction}"
     rs = fetch(url)
     if not rs or 'data' not in rs: return {}
-    
     route_stops = {}
     ctb_cache = load_cache(CTB_CACHE)
-    
     for s in rs['data']:
         stop_id = s.get('stop')
-        if stop_id in ctb_cache:
-            route_stops[stop_id] = ctb_cache[stop_id]
+        if stop_id in ctb_cache: route_stops[stop_id] = ctb_cache[stop_id]
         else:
-            # Real-time fetch
             info = fetch(f"https://rt.data.gov.hk/v2/transport/citybus/stop/{stop_id}")
             if info and 'data' in info:
                 d = info['data']
@@ -74,9 +69,7 @@ def get_ctb_route_stops_realtime(route, direction):
                 if lat and lon:
                     route_stops[stop_id] = {'lat': lat, 'lon': lon, 'name_en': name}
                     ctb_cache[stop_id] = route_stops[stop_id]
-    
-    save_cache(CTB_CACHE, ctb_cache)
-    return route_stops
+    save_cache(CTB_CACHE, ctb_cache); return route_stops
 
 def find_stops(route, pattern, lang="tc"):
     if not os.path.exists(DB_PATH): return []
@@ -94,80 +87,188 @@ def find_stops(route, pattern, lang="tc"):
 
 def main(route, pattern, lang="tc"):
     start_t = time.time()
+    output = [] 
+    
+    if not os.path.exists(DB_PATH):
+        output.append("🔄 首次使用，正在初始化數據庫，請稍後......")
+        output.append("（約需 15-20 秒）")
+        output.append("")
+        import sync_bus_stops
+        sync_bus_stops.sync(log=output.append)
+        output.append("")
+        output.append("✅ 數據庫初始化完成！")
+        output.append("")
+    
+    needs_bg_sync = False
+    if os.path.exists(DB_PATH):
+        file_age = time.time() - os.path.getmtime(DB_PATH)
+        if file_age > 7 * 86400:
+            needs_bg_sync = True
+            output.append("🔄 數據庫已超過 7 天，正在背景更新......")
+            output.append("")
+    
     stops = find_stops(route, pattern, lang)
-    if not stops: print("⚠️ 搵唔到匹配嘅車站。"); return
+    if not stops:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT lat, lon FROM stops WHERE name_tc LIKE ? OR name_en LIKE ? LIMIT 20', (f'%{pattern}%', f'%{pattern}%'))
+        locs = c.fetchall()
+        if locs:
+            alat, alon = sum(l[0] for l in locs)/len(locs), sum(l[1] for l in locs)/len(locs)
+            c.execute('SELECT s.stop_id,s.name_tc,s.name_en,s.lat,s.lon,s.pick_drop,r.company,r.route_dir FROM stops s JOIN routes r ON s.route_id=r.id WHERE r.route=?', (route,))
+            for r in c.fetchall():
+                if get_dist(r[3], r[4], alat, alon) < 0.3:
+                    stops.append({'id':r[0],'name':(cleanup_name(r[1]) if lang=='tc' else cleanup_name(r[2])),'lat':r[3],'lon':r[4],'pick_drop':r[5],'company':r[6],'dir':['outbound','inbound'][r[7]-1]})
+        if not stops:
+            c.execute('SELECT DISTINCT s.name_tc FROM stops s JOIN routes r ON s.route_id=r.id WHERE r.route=? LIMIT 3', (route,))
+            s_list = [row[0] for row in c.fetchall()]
+            output.append(f"⚠️ 搵唔到匹配「{pattern}」嘅車站。{route} 建議站名：{', '.join(s_list)}...")
+            print("\n".join(output))
+            return
+        conn.close()
+
+    # Pre-detect circular route
+    is_circular = False
+    if os.path.exists(DB_PATH):
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT dest_tc FROM routes WHERE route=?', (route,))
+        rows = c.fetchall()
+        is_circular = any('循環線' in r[0] for r in rows)
+        conn.close()
 
     kmb_stops_all = get_kmb_stops()
     results = {}
-    
-    # Determine operators needed
-    ops = set()
-    for s in stops:
-        if s['pick_drop'] == 1: continue
-        if 'KMB' in s['company'] or 'KMB+CTB' == s['company']: ops.add('kmb')
-        if 'CTB' in s['company'] or 'KMB+CTB' == s['company']: ops.add('ctb')
+    processed_stops = set()
 
-    # For each operator and direction, get route stops
-    for op in ops:
+    for op in ['kmb', 'ctb']:
         for d in ['outbound', 'inbound']:
-            if time.time() - start_t > 13: break
-            
+            if time.time() - start_t > 28: break
             if op == 'kmb':
-                url = f"https://data.etabus.gov.hk/v1/transport/kmb/route-stop/{route}/{d}/1"
-                rs = fetch(url)
+                rs = fetch(f"https://data.etabus.gov.hk/v1/transport/kmb/route-stop/{route}/{d}/1")
                 if not rs or 'data' not in rs: continue
                 for rs_item in rs['data']:
-                    info = kmb_stops_all.get(rs_item['stop'], {})
-                    alat = float(info.get('lat', 999))
-                    alon = float(info.get('long', 999))
+                    sid = rs_item['stop']
+                    if (op, sid, d) in processed_stops: continue
+                    info = kmb_stops_all.get(sid, {})
+                    alat, alon = float(info.get('lat', 999)), float(info.get('long', 999))
                     if alat < 900:
                         for s in stops:
-                            if s['pick_drop'] == 1: continue
-                            if get_dist(s['lat'], s['lon'], alat, alon) < 0.15:
-                                eta_res = fetch(f"https://data.etabus.gov.hk/v1/transport/kmb/eta/{rs_item['stop']}/{route}/1")
+                            if s['dir'] == d and get_dist(s['lat'], s['lon'], alat, alon) < 0.15:
+                                processed_stops.add((op, sid, d))
+                                eta_res = fetch(f"https://data.etabus.gov.hk/v1/transport/kmb/eta/{sid}/{route}/1")
                                 if eta_res and 'data' in eta_res:
-                                    k = f"{s['lat']},{s['lon']}"
-                                    if k not in results: results[k] = {'name':s['name'],'lat':s['lat'],'lon':s['lon'],'etas':{},'ops':set()}
-                                    results[k]['ops'].add('kmb')
+                                    cluster_id = None
+                                    for ck in results:
+                                        clat, clon = map(float, ck.split(','))
+                                        if get_dist(clat, clon, s['lat'], s['lon']) < 0.05: cluster_id = ck; break
+                                    if not cluster_id:
+                                        cluster_id = f"{s['lat']},{s['lon']}"
+                                        results[cluster_id] = {'names':set([s['name']]),'lat':s['lat'],'lon':s['lon'],'etas':{},'ops':set(),'comp':s['company']}
+                                    results[cluster_id]['names'].add(s['name']); results[cluster_id]['ops'].add('kmb')
                                     for e in eta_res['data']:
+                                        if e.get('dir') != ('O' if d == 'outbound' else 'I'): continue
                                         f = format_eta(e.get('eta'))
                                         if f:
                                             dest = e.get('dest_tc' if lang=='tc' else 'dest_en')
-                                            if dest not in results[k]['etas']: results[k]['etas'][dest] = []
-                                            if not any(x['ts']==f['ts'] for x in results[k]['etas'][dest]):
-                                                results[k]['etas'][dest].append({**f, 'op':'kmb'})
-            else:  # CTB - REAL-TIME FETCH ALL STOPS
+                                            if dest not in results[cluster_id]['etas']: results[cluster_id]['etas'][dest] = {'data':[], 'is_terminus':False}
+                                            if s['pick_drop'] == 1: results[cluster_id]['etas'][dest]['is_terminus'] = True
+                                            # Circular route: determine departure vs arrival by seq
+                                            e_pd = s['pick_drop']
+                                            if is_circular:
+                                                e_pd = 2 if e.get('seq') == 1 else 1
+                                            if not any(x['str']==f['str'] for x in results[cluster_id]['etas'][dest]['data']):
+                                                results[cluster_id]['etas'][dest]['data'].append({**f, 'op':'kmb', 'pick_drop': e_pd})
+            else: # CTB
                 route_stops = get_ctb_route_stops_realtime(route, d)
                 for stop_id, info in route_stops.items():
+                    if (op, stop_id, d) in processed_stops: continue
                     alat, alon = info['lat'], info['lon']
                     for s in stops:
-                        if s['pick_drop'] == 1: continue
-                        if get_dist(s['lat'], s['lon'], alat, alon) < 0.15:
+                        if s['dir'] == d and get_dist(s['lat'], s['lon'], alat, alon) < 0.15:
+                            processed_stops.add((op, stop_id, d))
                             eta_res = fetch(f"https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/{stop_id}/{route}")
                             if eta_res and 'data' in eta_res:
-                                k = f"{s['lat']},{s['lon']}"
-                                if k not in results: results[k] = {'name':s['name'],'lat':s['lat'],'lon':s['lon'],'etas':{},'ops':set()}
-                                results[k]['ops'].add('ctb')
+                                cluster_id = None
+                                for ck in results:
+                                    clat, clon = map(float, ck.split(','))
+                                    if get_dist(clat, clon, s['lat'], s['lon']) < 0.05: cluster_id = ck; break
+                                if not cluster_id:
+                                    cluster_id = f"{s['lat']},{s['lon']}"
+                                    results[cluster_id] = {'names':set([s['name']]),'lat':s['lat'],'lon':s['lon'],'etas':{},'ops':set(),'comp':s['company']}
+                                results[cluster_id]['names'].add(s['name']); results[cluster_id]['ops'].add('ctb')
                                 for e in eta_res['data']:
+                                    if e.get('dir') != ('O' if d == 'outbound' else 'I'): continue
                                     f = format_eta(e.get('eta'))
                                     if f:
                                         dest = e.get('dest_tc' if lang=='tc' else 'dest_en')
-                                        if dest not in results[k]['etas']: results[k]['etas'][dest] = []
-                                        if not any(x['ts']==f['ts'] for x in results[k]['etas'][dest]):
-                                            results[k]['etas'][dest].append({**f, 'op':'ctb'})
+                                        if dest not in results[cluster_id]['etas']: results[cluster_id]['etas'][dest] = {'data':[], 'is_terminus':False}
+                                        if s['pick_drop'] == 1: results[cluster_id]['etas'][dest]['is_terminus'] = True
+                                        e_pd = s['pick_drop']
+                                        if not any(x['str']==f['str'] for x in results[cluster_id]['etas'][dest]['data']):
+                                            results[cluster_id]['etas'][dest]['data'].append({**f, 'op':'ctb', 'pick_drop': e_pd})
 
     for r in results.values():
-        pref = "九巴(KMB)" if 'kmb' in r['ops'] else "城巴(CTB)"
-        if len(r['ops'])>1: pref = "九巴(KMB)/城巴(CTB) 聯營"
-        print(f"🚌 **{pref} {route}** @ {r['name']} [📍地圖](https://www.google.com/maps?q={r['lat']},{r['lon']})")
-        for dest, etas in r['etas'].items():
-            times = []
-            for e in sorted(etas, key=lambda x:x['ts'])[:3]:
-                t_val = f"{e['str']} ({e['min']} min)"
-                if len(r['ops']) > 1: t_val += f" [{e['op'].upper()}]"
-                times.append(t_val)
-            print(f"• 往 {dest}: " + ", ".join(times))
-        print()
+        c_name, s_names = r.get('comp', ''), sorted(list(r['names']))
+        p = "九巴(KMB)/城巴(CTB) 聯營" if len(r['ops'])>1 else ("龍運(LWB)" if "LWB" in c_name else ("九巴(KMB)" if "kmb" in r['ops'] else "城巴(CTB)"))
+        header = " / ".join(s_names)
+        output.append(f"🚌 **{p} {route}** @ {header} [📍地圖](https://www.google.com/maps?q={r['lat']},{r['lon']})")
+        
+        # Get origin name for circular routes
+        orig_name = ""
+        if is_circular and os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute('SELECT DISTINCT orig_tc FROM routes WHERE route=?', (route,))
+            row = c.fetchone()
+            if row: orig_name = row[0]
+            conn.close()
+
+        merged = {}
+        for dest, obj in r['etas'].items():
+            if not obj['data']: continue
+            key = dest.replace('(','').replace(')','').replace(' ','')[:3]
+            if key not in merged: merged[key] = {'name':dest, 'data':[], 'is_terminus':False}
+            merged[key]['data'].extend(obj['data'])
+            if len(dest) < len(merged[key]['name']): merged[key]['name'] = dest
+            if obj['is_terminus']: merged[key]['is_terminus'] = True
+        
+        for key, obj in merged.items():
+            # For circular routes, split into departure and arrival ETAs
+            if is_circular:
+                departures = [e for e in obj['data'] if e.get('pick_drop') != 1]
+                arrivals = [e for e in obj['data'] if e.get('pick_drop') == 1]
+                
+                if departures:
+                    times = []
+                    for e in sorted(departures, key=lambda x:x['ts'])[:3]:
+                        t_val = f"{e['str']} ({e['min']} min)"
+                        if len(r['ops'])>1: t_val += f" [{e['op'].upper()}]"
+                        times.append(t_val)
+                    dest_clean = obj['name'].replace('(循環線)', '').strip()
+                    output.append(f"• {orig_name} 往 {dest_clean}(循環線): " + ", ".join(times))
+                
+                if arrivals:
+                    times = []
+                    for e in sorted(arrivals, key=lambda x:x['ts'])[:3]:
+                        t_val = f"{e['str']} ({e['min']} min)"
+                        if len(r['ops'])>1: t_val += f" [{e['op'].upper()}]"
+                        times.append(t_val)
+                    output.append(f"• 往 {orig_name}: " + ", ".join(times) + " [終點站]")
+            else:
+                times = []
+                for e in sorted(obj['data'], key=lambda x:x['ts'])[:3]:
+                    t_val = f"{e['str']} ({e['min']} min)"
+                    if len(r['ops'])>1: t_val += f" [{e['op'].upper()}]"
+                    times.append(t_val)
+                output.append(f"• 往 {obj['name']}: " + ", ".join(times) + (" [終點站]" if obj['is_terminus'] else ""))
+        output.append("")
+    
+    print("\n".join(output))
+    if needs_bg_sync:
+        sync_script = os.path.join(BASE_DIR, "sync_bus_stops.py")
+        try: subprocess.Popen(["python3", sync_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except: pass
 
 if __name__ == "__main__":
     import sys; a = sys.argv[1:]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Hong Kong Bus Stops Query Helper
-Version: 0.2.3 (BETA)
+Version: 1.0.0
 
 Provides fast stop lookup using local SQLite database.
 
@@ -63,7 +63,7 @@ def find_stops_by_name(pattern, lang='tc', limit=10):
         seen.add((stop_id, company, route))
         
         c.execute('''
-            SELECT s.stop_name_tc, s.stop_name_en, s.lat, s.lon, r.origin_tc, r.origin_en, r.dest_tc, r.dest_en
+            SELECT s.name_tc, s.name_en, s.lat, s.lon, r.orig_tc, r.orig_en, r.dest_tc, r.dest_en
             FROM stops s
             JOIN routes r ON s.route_id = r.id
             WHERE s.stop_id = ? AND r.company = ? AND r.route = ?
@@ -74,14 +74,14 @@ def find_stops_by_name(pattern, lang='tc', limit=10):
         if row:
             results.append({
                 'stop_id': stop_id,
-                'stop_name_tc': row[0],
-                'stop_name_en': row[1],
+                'name_tc': row[0],
+                'name_en': row[1],
                 'lat': row[2],
                 'lon': row[3],
                 'company': company,
                 'route': route,
-                'origin_tc': row[4],
-                'origin_en': row[5],
+                'orig_tc': row[4],
+                'orig_en': row[5],
                 'dest_tc': row[6],
                 'dest_en': row[7]
             })
@@ -103,8 +103,8 @@ def find_stops_by_coords(lat, lon, radius_km=0.5, limit=10):
     
     c = conn.cursor()
     c.execute('''
-        SELECT s.stop_id, s.stop_name_tc, s.stop_name_en, s.lat, s.lon, s.stop_seq,
-               r.company, r.route, r.origin_tc, r.dest_tc
+        SELECT s.stop_id, s.name_tc, s.name_en, s.lat, s.lon, s.stop_seq,
+               r.company, r.route, r.orig_tc, r.dest_tc
         FROM stops s
         JOIN routes r ON s.route_id = r.id
         WHERE s.lat BETWEEN ? AND ? AND s.lon BETWEEN ? AND ?
@@ -121,14 +121,14 @@ def find_stops_by_coords(lat, lon, radius_km=0.5, limit=10):
         if dist <= radius_km:
             results.append({
                 'stop_id': row[0],
-                'stop_name_tc': row[1],
-                'stop_name_en': row[2],
+                'name_tc': row[1],
+                'name_en': row[2],
                 'lat': stop_lat,
                 'lon': stop_lon,
                 'stop_seq': row[5],
                 'company': row[6],
                 'route': row[7],
-                'origin_tc': row[8],
+                'orig_tc': row[8],
                 'dest_tc': row[9],
                 'distance': dist
             })
@@ -149,19 +149,19 @@ def get_route_stops(route, company=None):
     
     if company:
         c.execute('''
-            SELECT s.stop_id, s.stop_name_tc, s.stop_name_en, s.stop_seq, s.lat, s.lon, r.company, r.route_seq
+            SELECT s.stop_id, s.name_tc, s.name_en, s.stop_seq, s.lat, s.lon, r.company, r.route_dir
             FROM stops s
             JOIN routes r ON s.route_id = r.id
             WHERE r.route = ? AND r.company = ?
-            ORDER BY r.route_seq, s.stop_seq
+            ORDER BY r.route_dir, s.stop_seq
         ''', (route, company))
     else:
         c.execute('''
-            SELECT s.stop_id, s.stop_name_tc, s.stop_name_en, s.stop_seq, s.lat, s.lon, r.company, r.route_seq
+            SELECT s.stop_id, s.name_tc, s.name_en, s.stop_seq, s.lat, s.lon, r.company, r.route_dir
             FROM stops s
             JOIN routes r ON s.route_id = r.id
             WHERE r.route = ?
-            ORDER BY r.company, r.route_seq, s.stop_seq
+            ORDER BY r.company, r.route_dir, s.stop_seq
         ''', (route,))
     
     rows = c.fetchall()
@@ -169,13 +169,13 @@ def get_route_stops(route, company=None):
     
     return [{
         'stop_id': row[0],
-        'stop_name_tc': row[1],
-        'stop_name_en': row[2],
+        'name_tc': row[1],
+        'name_en': row[2],
         'stop_seq': row[3],
         'lat': row[4],
         'lon': row[5],
         'company': row[6],
-        'route_seq': row[7]
+        'route_dir': row[7]
     } for row in rows]
 
 def get_db_info():
