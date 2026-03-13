@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Hong Kong Bus Stops Sync Script
-Version: 0.2.3 (BETA)
-
+Version: 1.0.0
 Created: 2026-03-13 (by "Mr. Usagi - Tom's Agent")
+
+Changelog:
 - Syncs TD JSON data
 - Pre-builds CTB coordinate cache
 - Data Dictionary compliant (stopPickDrop, routeSeq)
@@ -23,9 +24,9 @@ def fetch(url):
         with urlopen(req, timeout=120) as r: return json.loads(r.read().decode('utf-8-sig'))
     except: return None
 
-def build_ctb_cache():
+def build_ctb_cache(log=print):
     """Pre-build CTB stop coordinate cache by calling CTB route-stop API."""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Building CTB stop cache...")
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] Building CTB stop cache...")
     
     # Get all CTB routes from DB
     conn = sqlite3.connect(DB_PATH)
@@ -64,7 +65,7 @@ def build_ctb_cache():
                 all_stop_ids.add(sid)
                 seen_stop_ids.add(sid)
     
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Fetching {len(all_stop_ids)} CTB stop coordinates...")
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] Fetching {len(all_stop_ids)} CTB stop coordinates...")
     
     # Fetch all stop info in parallel
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -78,12 +79,12 @@ def build_ctb_cache():
     
     # Save cache
     json.dump({'ts': time.time(), 'stops': ctb_stops}, open(CTB_CACHE, 'w'))
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] CTB cache built: {len(ctb_stops)} stops")
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] CTB cache built: {len(ctb_stops)} stops")
 
-def sync():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Downloading JSON_BUS.json...")
+def sync(log=print):
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] Downloading JSON_BUS.json...")
     data = fetch(JSON_URL)
-    if not data: print("Error downloading"); return
+    if not data: log("Error downloading"); return
     
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -108,7 +109,7 @@ def sync():
     ''')
     
     features = data.get('features', [])
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Processing {len(features)} features...")
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] Processing {len(features)} features...")
     
     route_map = {}
     for f in features:
@@ -133,9 +134,9 @@ def sync():
     
     conn.commit()
     conn.close()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] DB sync complete: {os.path.getsize(DB_PATH)/1024/1024:.2f} MB")
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] DB sync complete: {os.path.getsize(DB_PATH)/1024/1024:.2f} MB")
     
     # Build CTB cache
-    build_ctb_cache()
+    build_ctb_cache(log=log)
 
 if __name__ == "__main__": sync()
