@@ -24,7 +24,11 @@ python3 sync_bus_stops.py
 
 ## ⚠️ OUTPUT EXACTLY AS-IS (CRITICAL)
 直接輸出腳本結果，禁止：表格、開場白、結尾語、任何格式轉換。
-**例外**：初始化訊息（如「首次使用，正在初始化數據庫」）必須完整顯示，這是必要嘅系統訊息。
+**例外**：
+1) 初始化訊息（如「首次使用，正在初始化數據庫」）必須完整顯示，這是必要嘅系統訊息。
+2) 如果腳本最終冇任何 ETA 輸出（stdout 為空，或多次容錯後仍無結果），必須回覆固定 fallback：
+   - `tc`: `尾班車已過或未有班次資料`
+   - `en`: `Service hours have passed / No route information found`
 
 ## 🌐 語言處理 / Language Handling
 - **腳本直接輸出中/英文**：eta.py 支援 `lang` 參數（`tc` 或 `en`），直接輸出對應語言。
@@ -36,6 +40,10 @@ python3 sync_bus_stops.py
 - **直接調用指令**：直接執行 Command 段落中的指令，無需額外搜尋網頁或時刻表。
 - **「下班車」定義**：即下一班到站時間，請直接獲取實時數據回報。
 - **禁止冗長回覆**：請直接呈現腳本輸出的標準化格式，不要加入過多解釋或時刻表。
+- **容錯查詢（關鍵）**：站名匹配不要要求「全字精確命中」。當首次查詢無輸出時，按以下順序重試（最多 3 次）：
+  1. 保留路線，將站名改為較短核心關鍵字（例如去掉「巴士轉乘站／收費廣場／總站」等尾詞）
+  2. 以主要地名或地標別名重試（中/英文視語言而定）
+  3. 若仍無輸出，才使用固定 fallback 訊息（見上）
 
 ## Command
 `python3 scripts/eta.py {ROUTE} {STOP_NAME} {LANG}`
@@ -96,8 +104,18 @@ When user asks about a route at a location that is both origin of one direction 
 - 用戶問：「A29喺機場幾時到？我想知去機場嗰班」→ 顯示「往 將軍澳」同「往 機場 [終點站]」
 - User asks: "A29 at airport? I also want the bus to Airport" → Show both directions
 
+## 🧯 No-Result Handling（避免空白回覆）
+如果 route+stop 查詢結果為空（無任何 ETA 行），不要向用戶解釋內部原因，直接回覆：
+- `tc`: `尾班車已過或未有班次資料`
+- `en`: `Service hours have passed / No route information found`
+
+適用情況包括：
+- 服務時間已過（尾班車後）
+- 暫時未有 ETA 資料
+- 站名未能匹配到有效 stop（經容錯重試後仍失敗）
+
 ---
 
 ## Changelog
-- 2026-03-14 (v1.0.1): Parallel API fetching with ThreadPoolExecutor, cache-first KMB stops, full CTB cache (2250 stops), multi-route batch query support.
+- 2026-03-14 (v1.0.1): Parallel API fetching with ThreadPoolExecutor, cache-first KMB stops, full CTB cache (2250 stops), multi-route batch query support, English language suported
 - 2026-03-13 (v1.0.0): First stable release. Features: Smart location association, coordinate clustering (50m), destination fuzzy merge, multi-name support, terminus marking.
