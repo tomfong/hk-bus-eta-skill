@@ -16,12 +16,12 @@ clawhub install hk-bus-eta
 clawhub install https://github.com/tomfong/hk-bus-eta-skill --path hk-bus-eta --as hk-bus-eta
 ```
 
-## First Run
+## ⚡ First Run / Post-Install Required
 
-⏱️ **First-time initialization takes ~10-30 seconds** to download and build the bus stops database (~20MB).
+⏱️ **First-time initialization takes ~1-2 minutes** to download and build the bus stops database (~20MB).
 Subsequent queries are instant.
 
-**You are strongly recommended to run the following command once before first use:**
+**You MUST run the following command once before first use:**
 
 ```bash
 python3 <DIRECTORY_OF_SKILLS>/hk-bus-eta/scripts/sync_bus_stops.py
@@ -32,6 +32,12 @@ python3 <DIRECTORY_OF_SKILLS>/hk-bus-eta/scripts/sync_bus_stops.py
 ```bash
 python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 ```
+
+> ⚠️ **HIGHLY RECOMMENDED**: Complete this step before your first query for optimal performance.
+>
+> If you skip this step, the first query will automatically download and initialize the database, but you'll need to wait 15-20 seconds.
+>
+> `{skill_dir}` = skill installation directory, e.g. `~/.openclaw/workspace/skills/hk-bus-eta`
 
 ## Features
 
@@ -56,8 +62,9 @@ python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 **Natural Language** Just ask in Cantonese, English, or mixed:
 
 - "下一班 1A 幾時到中間道？"
-- "When is the next A29 from Airport?"
+- "When does the next bus on route A21 arrive at the airport?"
 - "城巴 11 喺中環有邊幾個站？巴士最快幾時到？"
+- "我宜家人喺尖沙咀，想返將軍澳，請問296D、98D下班車幾時到?"
 
 **Direct Command** The skill supports direct commands for query.
 
@@ -66,25 +73,15 @@ exec python3 <DIRECTORY_OF_SKILLS>/hk-bus-eta/scripts/eta.py {ROUTE} {STOP_NAME}
 ```
 
 ```bash
-# Route A29 at Po Lam Station
-exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A29 寶琳站
+# Route 690 at Central
+exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py 690 Central en
 
 # Route 1A at Tsim Sha Tsui area
-exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py 1A 尖沙咀
+exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py 1A 尖沙咀 tc
 
-# Route A41P at Airport
-exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A41P 機場
+# Route A21 at Airport
+exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A21 Airport en
 ```
-
-**Key Optimizations in v1.0.1:**
-1. **Parallel API Fetching**: Uses `ThreadPoolExecutor` to fetch KMB and CTB ETA data simultaneously
-2. **Cache-First Strategy**: Pre-loads KMB stops cache and full CTB cache (2250+ stops)
-3. **Multi-Route Batch Support**: Dedicated `multi_eta.py` script for efficient batch queries
-4. **Reduced Latency**: Significantly faster response times for multi-route queries
-
-**Performance Comparison:**
-- **Before**: Sequential queries for A29 and E22A took ~1 minute
-- **After**: Parallel queries complete in ~15-20 seconds
 
 ### Output Format
 
@@ -142,7 +139,7 @@ Bus ETA data from APIs of DATA.GOV.HK (開放數據平台)
 - **Cache-First Strategy**: Pre-loads KMB stops cache and full CTB cache (2250+ stops)
 - **Multi-Route Batch Support**: Parallel execution for multiple route queries
 - **Reduced Latency**: Significantly faster response times for multi-route queries
-- **Improved Error Handling**: Better timeout management and error recovery
+- **Language Handling**: English query/output mode supported
 
 ### v1.0.0 (2026-03-13)
 
