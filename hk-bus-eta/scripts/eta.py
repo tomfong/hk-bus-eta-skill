@@ -8,7 +8,7 @@ Changelog:
 - 2026-03-13 (v1.0.0): First stable release. Supports KMB/CTB/LWB with smart location association, coordinate clustering, destination fuzzy merge, terminus marking, circular route handling, and auto background sync.
 - 30s Golden Rule timeout enforced.
 """
-import json, os, time, math, sqlite3, subprocess, sys
+import json, os, time, math, sqlite3, subprocess, sys, re
 from urllib.request import urlopen, Request
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -121,9 +121,22 @@ def find_stops(route, pattern, lang="tc"):
     for r in c.fetchall():
         tc, en = cleanup_name(r[1]), cleanup_name(r[2])
         if p in tc.lower() or p in en.lower():
-            rows.append({'id':r[0],'name':tc if lang=='tc' else en,'lat':r[3],'lon':r[4],'pick_drop':r[5],'company':r[6],'dir':['outbound','inbound'][r[7]-1]})
+            rows.append({'id':r[0],'name_tc':tc, 'name_en':en, 'lat':r[3],'lon':r[4],'pick_drop':r[5],'company':r[6],'dir':['outbound','inbound'][r[7]-1]})
     conn.close()
     return rows
+
+# English translations
+EN_TRANS = {
+    "九巴(KMB)": "KMB",
+    "城巴(CTB)": "CTB",
+    "龍運(LWB)": "LWB",
+    "九巴(KMB)/城巴(CTB) 聯營": "KMB/CTB Joint",
+    "終點站": "Terminus",
+    "循環線": "Circular",
+    "往": "To",
+    "地圖": "Map",
+    "分鐘": "min",
+}
 
 def fetch_parallel(urls_with_keys, max_workers=10):
     """Fetch multiple URLs in parallel, returning dict of key -> result."""
@@ -143,13 +156,20 @@ def main(route, pattern, lang="tc"):
     output = [] 
     
     if not os.path.exists(DB_PATH):
-        output.append("🔄 首次使用，正在初始化數據庫，請稍後......")
-        output.append("（約需 15-20 秒）")
+        if lang == 'en':
+            output.append("🔄 First run, initializing database...")
+            output.append("(About 15-20 seconds)")
+        else:
+            output.append("🔄 首次使用，正在初始化數據庫，請稍後......")
+            output.append("（約需 15-20 秒）")
         output.append("")
         import sync_bus_stops
         sync_bus_stops.sync(log=output.append)
         output.append("")
-        output.append("✅ 數據庫初始化完成！")
+        if lang == 'en':
+            output.append("✅ Database initialized!")
+        else:
+            output.append("✅ 數據庫初始化完成！")
         output.append("")
     
     needs_bg_sync = False
@@ -157,7 +177,10 @@ def main(route, pattern, lang="tc"):
         file_age = time.time() - os.path.getmtime(DB_PATH)
         if file_age > 7 * 86400:
             needs_bg_sync = True
-            output.append("🔄 數據庫已超過 7 天，正在背景更新......")
+            if lang == 'en':
+                output.append("🔄 Database outdated (>7 days), updating in background...")
+            else:
+                output.append("🔄 數據庫已超過 7 天，正在背景更新......")
             output.append("")
     
     stops = find_stops(route, pattern, lang)
@@ -171,11 +194,16 @@ def main(route, pattern, lang="tc"):
             c.execute('SELECT s.stop_id,s.name_tc,s.name_en,s.lat,s.lon,s.pick_drop,r.company,r.route_dir FROM stops s JOIN routes r ON s.route_id=r.id WHERE r.route=?', (route,))
             for r in c.fetchall():
                 if get_dist(r[3], r[4], alat, alon) < 0.3:
-                    stops.append({'id':r[0],'name':(cleanup_name(r[1]) if lang=='tc' else cleanup_name(r[2])),'lat':r[3],'lon':r[4],'pick_drop':r[5],'company':r[6],'dir':['outbound','inbound'][r[7]-1]})
+                    stops.append({'id':r[0],'name_tc':cleanup_name(r[1]), 'name_en':cleanup_name(r[2]),'lat':r[3],'lon':r[4],'pick_drop':r[5],'company':r[6],'dir':['outbound','inbound'][r[7]-1]})
         if not stops:
-            c.execute('SELECT DISTINCT s.name_tc FROM stops s JOIN routes r ON s.route_id=r.id WHERE r.route=? LIMIT 3', (route,))
-            s_list = [row[0] for row in c.fetchall()]
-            output.append(f"⚠️ 搵唔到匹配「{pattern}」嘅車站。{route} 建議站名：{', '.join(s_list)}...")
+            if lang == 'en':
+                c.execute('SELECT DISTINCT s.name_en FROM stops s JOIN routes r ON s.route_id=r.id WHERE r.route=? LIMIT 3', (route,))
+                s_list = [row[0] for row in c.fetchall()]
+                output.append(f"⚠️ No stop matching \"{pattern}\". {route} suggested stops: {', '.join(s_list)}...")
+            else:
+                c.execute('SELECT DISTINCT s.name_tc FROM stops s JOIN routes r ON s.route_id=r.id WHERE r.route=? LIMIT 3', (route,))
+                s_list = [row[0] for row in c.fetchall()]
+                output.append(f"⚠️ 搵唔到匹配「{pattern}」嘅車站。{route} 建議站名：{', '.join(s_list)}...")
             print("\n".join(output))
             return
         conn.close()
@@ -185,9 +213,10 @@ def main(route, pattern, lang="tc"):
     if os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute('SELECT dest_tc FROM routes WHERE route=?', (route,))
+        c.execute('SELECT dest_tc, dest_en FROM routes WHERE route=?', (route,))
         rows = c.fetchall()
-        is_circular = any('循環線' in r[0] for r in rows)
+        # Check for circular route in both Chinese and English
+        is_circular = any('循環線' in r[0] or 'CIRCULAR' in str(r[1]).upper() for r in rows)
         conn.close()
 
     kmb_stops_all = get_kmb_stops()
@@ -281,8 +310,9 @@ def main(route, pattern, lang="tc"):
                 break
         if not cluster_id:
             cluster_id = f"{s['lat']},{s['lon']}"
-            results[cluster_id] = {'names': set([s['name']]), 'lat': s['lat'], 'lon': s['lon'], 'etas': {}, 'ops': set(), 'comp': s['company']}
-        results[cluster_id]['names'].add(s['name'])
+            results[cluster_id] = {'names_tc': set([s['name_tc']]), 'names_en': set([s['name_en']]), 'lat': s['lat'], 'lon': s['lon'], 'etas': {}, 'ops': set(), 'comp': s['company']}
+        results[cluster_id]['names_tc'].add(s['name_tc'])
+        results[cluster_id]['names_en'].add(s['name_en'])
         results[cluster_id]['ops'].add(op)
         
         for e in eta_res['data']:
@@ -290,30 +320,54 @@ def main(route, pattern, lang="tc"):
                 continue
             f = format_eta(e.get('eta'))
             if f:
+                e_seq = e.get('seq', 0)
+
+                # Circular-route guard:
+                # at origin-like stop (pick_drop=1), keep ONLY seq=1 departure ETAs;
+                # this prevents destination/terminus ETAs from mixing in.
+                if is_circular and s['pick_drop'] == 1 and str(e_seq) != '1':
+                    continue
+
                 dest = e.get('dest_tc' if lang == 'tc' else 'dest_en')
                 if dest not in results[cluster_id]['etas']:
                     results[cluster_id]['etas'][dest] = {'data': [], 'is_terminus': False}
                 if s['pick_drop'] == 1:
                     results[cluster_id]['etas'][dest]['is_terminus'] = True
                 e_pd = s['pick_drop']
-                if is_circular:
-                    e_pd = 2 if e.get('seq') == 1 else 1
-                if not any(x['str'] == f['str'] for x in results[cluster_id]['etas'][dest]['data']):
-                    results[cluster_id]['etas'][dest]['data'].append({**f, 'op': op, 'pick_drop': e_pd})
+
+                # De-dup by time+seq (not just time), avoids dropping valid seq=1 records.
+                if not any(x['str'] == f['str'] and str(x.get('seq', '')) == str(e_seq) for x in results[cluster_id]['etas'][dest]['data']):
+                    results[cluster_id]['etas'][dest]['data'].append({**f, 'op': op, 'pick_drop': e_pd, 'seq': e_seq})
     
     # === Phase 6: Format output ===
     for r in results.values():
-        c_name, s_names = r.get('comp', ''), sorted(list(r['names']))
-        p = "九巴(KMB)/城巴(CTB) 聯營" if len(r['ops'])>1 else ("龍運(LWB)" if "LWB" in c_name else ("九巴(KMB)" if "kmb" in r['ops'] else "城巴(CTB)"))
-        header = " / ".join(s_names)
-        output.append(f"🚌 **{p} {route}** @ {header} [📍地圖](https://www.google.com/maps?q={r['lat']},{r['lon']})")
+        # Check if this stop has any non-terminus routes (boarding routes)
+        has_boarding = any(not obj['is_terminus'] and obj['data'] for obj in r['etas'].values())
+        if not has_boarding:
+            continue  # Skip stops that only have terminus routes
+        
+        c_name = r.get('comp', '')
+        if lang == 'en':
+            s_names = sorted(list(r.get('names_en', set())))
+            p = "KMB/CTB Joint" if len(r['ops'])>1 else ("LWB" if "LWB" in c_name else ("KMB" if "kmb" in r['ops'] else "CTB"))
+            header = " / ".join(s_names)
+            map_label = "Map"
+        else:
+            s_names = sorted(list(r.get('names_tc', set())))
+            p = "九巴(KMB)/城巴(CTB) 聯營" if len(r['ops'])>1 else ("龍運(LWB)" if "LWB" in c_name else ("九巴(KMB)" if "kmb" in r['ops'] else "城巴(CTB)"))
+            header = " / ".join(s_names)
+            map_label = "地圖"
+        output.append(f"🚌 **{p} {route}** @ {header} [📍{map_label}](https://www.google.com/maps?q={r['lat']},{r['lon']})")
         
         # Get origin name for circular routes
         orig_name = ""
         if is_circular and os.path.exists(DB_PATH):
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
-            c.execute('SELECT DISTINCT orig_tc FROM routes WHERE route=?', (route,))
+            if lang == 'en':
+                c.execute('SELECT DISTINCT orig_en FROM routes WHERE route=?', (route,))
+            else:
+                c.execute('SELECT DISTINCT orig_tc FROM routes WHERE route=?', (route,))
             row = c.fetchone()
             if row: orig_name = row[0]
             conn.close()
@@ -329,8 +383,13 @@ def main(route, pattern, lang="tc"):
         
         for key, obj in merged.items():
             if is_circular:
-                departures = [e for e in obj['data'] if e.get('pick_drop') != 1]
-                arrivals = [e for e in obj['data'] if e.get('pick_drop') == 1]
+                # For circular routes:
+                # - At origin stop: filter to show only departures (seq=1)
+                # - At intermediate stops: show all ETAs
+                departures = [e for e in obj['data'] if str(e.get('seq', '')) == '1']
+                # If no seq=1 ETAs, this is an intermediate stop - show all
+                if not departures:
+                    departures = obj['data']
                 
                 if departures:
                     times = []
@@ -338,23 +397,28 @@ def main(route, pattern, lang="tc"):
                         t_val = f"{e['str']} ({e['min']} min)"
                         if len(r['ops'])>1: t_val += f" [{e['op'].upper()}]"
                         times.append(t_val)
-                    dest_clean = obj['name'].replace('(循環線)', '').strip()
-                    output.append(f"• {orig_name} 往 {dest_clean}(循環線): " + ", ".join(times))
-                
-                if arrivals:
-                    times = []
-                    for e in sorted(arrivals, key=lambda x:x['ts'])[:3]:
-                        t_val = f"{e['str']} ({e['min']} min)"
-                        if len(r['ops'])>1: t_val += f" [{e['op'].upper()}]"
-                        times.append(t_val)
-                    output.append(f"• 往 {orig_name}: " + ", ".join(times) + " [終點站]")
+                    import re
+                    # Remove circular suffix from destination name
+                    dest_clean = re.sub(r'\s*\(循環線\)\s*$', '', obj['name'])
+                    dest_clean = re.sub(r'\s*\(CIRCULAR\)\s*$', '', dest_clean, flags=re.IGNORECASE)
+                    dest_clean = dest_clean.strip()
+                    if lang == 'en':
+                        output.append(f"• From {orig_name} to {dest_clean} (Circular): " + ", ".join(times))
+                    else:
+                        output.append(f"• {orig_name} 往 {dest_clean}(循環線): " + ", ".join(times))
             else:
+                # Non-circular routes: hide terminus ETAs by default
+                if obj['is_terminus']:
+                    continue
                 times = []
                 for e in sorted(obj['data'], key=lambda x:x['ts'])[:3]:
                     t_val = f"{e['str']} ({e['min']} min)"
                     if len(r['ops'])>1: t_val += f" [{e['op'].upper()}]"
                     times.append(t_val)
-                output.append(f"• 往 {obj['name']}: " + ", ".join(times) + (" [終點站]" if obj['is_terminus'] else ""))
+                if lang == 'en':
+                    output.append(f"• To {obj['name']}: " + ", ".join(times))
+                else:
+                    output.append(f"• 往 {obj['name']}: " + ", ".join(times))
         output.append("")
     
     print("\n".join(output))
@@ -365,4 +429,4 @@ def main(route, pattern, lang="tc"):
 
 if __name__ == "__main__":
     import sys; a = sys.argv[1:]
-    if len(a)>=2: main(a[0], a[1], a[4] if len(a)>4 else "tc")
+    if len(a)>=2: main(a[0], a[1], a[2] if len(a)>2 else "tc")
