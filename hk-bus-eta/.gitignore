@@ -10,3 +10,5 @@ bus_stops.db
 kmb_stops.json
 ctb_stops.json
 stops_cache.json
+
+.DS_Store
