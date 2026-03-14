@@ -1,45 +1,44 @@
-# 🚌 Hong Kong Bus ETA - Technical Reference
+# Hong Kong Bus ETA - Technical Reference
 
 > ⚠️ **For complete documentation, please refer to the [main README.md](../README.md)**
 > 
 > This file contains technical reference information for the Hong Kong Bus ETA skill.
 
-## Quick Links | 快速連結
+## Quick Links
 
 - **[Main Documentation](../README.md)** - Complete user guide with installation, usage examples, and features
 - **[SKILL.md](./SKILL.md)** - Technical specification for AI agents
 - **[Scripts Directory](./scripts/)** - Python scripts for bus ETA queries
 
-## Technical Overview | 技術概述
+## Technical Overview
 
 **Skill Name:** `hk-bus-eta`  
 **Version:** 1.0.2  
 **Last Updated:** 2026-03-14  
 **Compatibility:** OpenClaw and compatible AI agents
 
-### Core Components | 核心組件
+### Core Components
 
 1. **`eta.py`** - Main query script for bus ETA lookups
 2. **`sync_bus_stops.py`** - Database initialization and sync script
 3. **`bus_query.py`** - Internal API query module
 4. **`bus_stops.db`** - SQLite database for bus stop data
 
-### API Endpoints | API 端點
+### API Endpoints
 
 **Data Sources:**
 - **KMB/LWB**: `https://data.etabus.gov.hk/v1/transport/kmb/`
 - **Citybus**: `https://rt.data.gov.hk/v2/transport/citybus/`
 - **Bus Stop Data**: `https://data.gov.hk/` (開放數據平台)
 
-### Database Schema | 數據庫結構
+### Database Schema
 
 The SQLite database (`bus_stops.db`) contains:
 - `bus_stops` - Bus stop information with coordinates
 - `stop_clusters` - Clustered stops within 50m radius
 - `location_aliases` - Area name to coordinate mappings
 
-## Script Usage | 腳本使用
-
+## Script Usage
 ### Main Query Script
 ```bash
 python3 eta.py {ROUTE} {STOP_NAME} [LANGUAGE]
@@ -66,7 +65,7 @@ python3 sync_bus_stops.py
 
 **Purpose:** Downloads and builds local bus stop database from DATA.GOV.HK
 
-## Technical Architecture | 技術架構
+## Technical Architecture
 
 ### Data Flow
 1. **User Query** → Natural language or direct command
@@ -81,7 +80,7 @@ python3 sync_bus_stops.py
 - **Stop Clustering**: 50m radius grouping for duplicate stops
 - **Fuzzy Matching**: Smart location association
 
-## File Structure | 文件結構
+## File Structure
 
 ```
 hk-bus-eta/
@@ -93,7 +92,7 @@ hk-bus-eta/
     └── bus_query.py   # Internal API module
 ```
 
-## Development Notes | 開發筆記
+## Development Notes
 
 ### Key Dependencies
 - `requests` - HTTP API calls
