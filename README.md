@@ -1,4 +1,4 @@
-# 🚌 Hong Kong Bus ETA Skill for AI Agents | 香港巴士預計到達時間技能
+# Hong Kong Bus ETA Skill for AI Agents | 香港巴士到站預報 🚌
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/downloads/)
