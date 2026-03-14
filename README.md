@@ -1,4 +1,4 @@
-# Hong Kong Bus ETA Skill for AI Agents | 香港巴士到站預報 🚌
+# Hong Kong Bus ETA Skill for AI Agents | 香港巴士到站預報
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/downloads/)
@@ -10,7 +10,7 @@
 
 Author: [Tom FONG](https://github.com/tomfong) (with Mr. Usagi - Tom's OpenClaw Agent) 
 
-## 📋 Overview | 概述
+## Overview
 
 A skill package for **OpenClaw** (and compatible AI agents) that provides **real-time bus arrival predictions** in **Hong Kong**. This tool enables AI assistants to query bus ETA (Estimated Time of Arrival) data with **fuzzy location matching**, **bilingual support** (Chinese/English), and **parallel processing** for fast responses.
 
@@ -26,7 +26,7 @@ A skill package for **OpenClaw** (and compatible AI agents) that provides **real
 - **龍運 (LWB)** - Long Win Bus | 龍運巴士
 - **城巴 (CTB)** - Citybus | 城巴
 
-## 🚀 Quick Start | 快速開始
+## Quick Start
 
 **For AI Agents/Developers:**
 ```bash
@@ -42,9 +42,9 @@ clawhub install https://github.com/tomfong/hk-bus-eta-skill --path hk-bus-eta --
 - "When does the next bus on route A21 arrive at the airport?"
 - "城巴 11 喺中環有邊幾個站？巴士最快幾時到？"
 
-## 📦 Installation | 安裝
+## Installation
 
-### Installation Methods | 安裝方法
+### Installation Methods
 
 #### From ClawHub (Recommended)
 ```bash
@@ -56,7 +56,7 @@ clawhub install hk-bus-eta
 clawhub install https://github.com/tomfong/hk-bus-eta-skill --path hk-bus-eta --as hk-bus-eta
 ```
 
-### ⚡ **First-Time Setup (Required) | 首次設置（必需）**
+### ⚡ **First-Time Setup (Recommended) **
 
 ⏱️ **First-time initialization takes ~1-2 minutes** to download and build the bus stops database (~20MB).
 Subsequent queries are instant.
@@ -67,7 +67,7 @@ Subsequent queries are instant.
 python3 <DIRECTORY_OF_SKILLS>/hk-bus-eta/scripts/sync_bus_stops.py
 ```
 
-**Example | 範例**
+**Example**
 
 ```bash
 python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
@@ -91,7 +91,7 @@ python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 > 
 > `{skill_dir}` = skill installation directory, e.g. `~/.openclaw/workspace/skills/hk-bus-eta`
 
-## 📚 Documentation | 文檔
+## Documentation
 
 ### This README contains complete documentation including:
 - ✅ Installation instructions
@@ -105,7 +105,7 @@ python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 - **[SKILL.md](hk-bus-eta/SKILL.md)** - AI agent specification and implementation details
 - **[Scripts Directory](hk-bus-eta/scripts/)** - Python scripts source code
 
-## 🔍 Search Optimization | 搜尋優化
+## Search Optimization
 
 This skill is optimized for **natural language queries** with **fuzzy matching** capabilities:
 
@@ -121,7 +121,7 @@ This skill is optimized for **natural language queries** with **fuzzy matching**
 - **Bilingual Support**: Query in Chinese or English, get results in same language
 - **Multi-route Batch**: Query multiple routes simultaneously
 
-## ✨ Features | 功能
+## Features 
 
 | Feature                  | Description                                  |
 | ------------------------ | -------------------------------------------- |
@@ -135,7 +135,7 @@ This skill is optimized for **natural language queries** with **fuzzy matching**
 | ⚡ **Parallel Processing**| Simultaneous API fetching for faster queries |
 | 🔄 **Multi-Route Batch**  | Batch query support for multiple routes      |
 
-## 🎯 Usage Examples | 使用範例
+## Usage Examples
 
 ### Natural Language Queries | 自然語言查詢
 **Just ask in Cantonese, English, or mixed:**
@@ -150,7 +150,7 @@ This skill is optimized for **natural language queries** with **fuzzy matching**
 - "What's the ETA for bus 690 at Central?"
 - "Next bus for route 1A at Tsim Sha Tsui?"
 
-### Direct Command Usage | 直接指令使用
+### Direct Command Usage
 The skill supports direct commands for query:
 
 ```bash
@@ -170,7 +170,7 @@ exec python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py 1A 尖沙咀
 exec python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A21 Airport en
 ```
 
-### Sample Output | 範例輸出
+### Sample Output
 ```
 🚌 路線 1A - 尖沙咀碼頭
 
@@ -184,7 +184,7 @@ exec python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A21 Airport 
 
 <img src="./docs/images/example01.PNG" width="400" alt="Bus ETA Example">
 
-## 📈 Changelog | 更新日誌
+## Changelog
 
 ### v1.0.2 (2026-03-14) - Performance Optimizations
 **Performance Optimizations:**
@@ -202,7 +202,7 @@ exec python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A21 Airport 
 - Local SQLite cache for fast queries
 - Auto-sync recommendation (weekly)
 
-## 🔧 Technical Details | 技術細節
+## Technical Details
 
 ### Data Sync | 數據同步
 Run weekly to keep bus stop data fresh:
@@ -219,7 +219,7 @@ python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 
 **Recommended CRON schedule:** Every Sunday at 03:30
 
-### Requirements | 系統要求
+### Requirements
 | Requirement | Notes                |
 | ----------- | -------------------- |
 | Python 3.x  | Main script runtime  |
@@ -235,7 +235,7 @@ Bus ETA data from APIs of [DATA.GOV.HK](https://data.gov.hk) (開放數據平台
 - **Fuzzy Matching**: Smart location association with 50m clustering
 - **Bilingual Support**: Chinese (Traditional) and English interfaces
 
-## 🔍 SEO Keywords | 搜尋關鍵字
+## SEO Keywords
 
 **Primary Keywords:**
 - Hong Kong bus ETA
@@ -261,7 +261,7 @@ Bus ETA data from APIs of [DATA.GOV.HK](https://data.gov.hk) (開放數據平台
 - DATA.GOV.HK integration
 - SQLite bus database
 
-## 🏷️ GitHub Topics | 主題標籤
+## GitHub Topics
 
 ```
 hong-kong-bus
@@ -283,7 +283,7 @@ arrival-time
 next-bus
 ```
 
-## 📄 License
+## License
 
 MIT License - See [LICENSE](LICENSE) for details.
 
