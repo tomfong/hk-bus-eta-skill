@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
 Hong Kong Bus Stops Sync Script
-Version: 1.0.0
-Created: 2026-03-13 (by "Mr. Usagi - Tom's Agent")
+Version: 1.0.1
 
-Changelog:
+Created: 2026-03-13
 - Syncs TD JSON data
-- Pre-builds CTB coordinate cache
+- Pre-builds CTB coordinate cache (FULL CACHE)
 - Data Dictionary compliant (stopPickDrop, routeSeq)
+
+Updated: 2026-03-14 (v1.0.1)
+- Full CTB cache: all routes, all stops (no more limits)
+- Increased parallelism for faster sync
 """
 import json, sqlite3, os, time, concurrent.futures
 from urllib.request import urlopen, Request
@@ -25,8 +28,8 @@ def fetch(url):
     except: return None
 
 def build_ctb_cache(log=print):
-    """Pre-build CTB stop coordinate cache by calling CTB route-stop API."""
-    log(f"[{datetime.now().strftime('%H:%M:%S')}] Building CTB stop cache...")
+    """Pre-build FULL CTB stop coordinate cache by calling CTB route-stop API."""
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] Building FULL CTB stop cache...")
     
     # Get all CTB routes from DB
     conn = sqlite3.connect(DB_PATH)
@@ -35,47 +38,55 @@ def build_ctb_cache(log=print):
     ctb_routes = [r[0] for r in c.fetchall()]
     conn.close()
     
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] Found {len(ctb_routes)} CTB routes")
+    
     ctb_stops = {}
     seen_stop_ids = set()
     
     def fetch_route_stops(route):
-        url = f"https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/{route}/outbound"
-        res = fetch(url)
-        if not res or 'data' not in res: return []
-        return res['data']
+        """Fetch stop IDs for a route (both directions)."""
+        stops = []
+        for direction in ['outbound', 'inbound']:
+            url = f"https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/{route}/{direction}"
+            res = fetch(url)
+            if res and 'data' in res:
+                for s in res['data']:
+                    stops.append(s.get('stop'))
+        return stops
     
     def fetch_stop_info(stop_id):
+        """Fetch stop coordinates."""
         url = f"https://rt.data.gov.hk/v2/transport/citybus/stop/{stop_id}"
         res = fetch(url)
         if res and 'data' in res:
             d = res['data']
-            return stop_id, float(d.get('lat', 0)), float(d.get('long', 0)), d.get('name_en', '')
+            lat, lon = float(d.get('lat', 0)), float(d.get('long', 0))
+            if lat and lon:
+                return stop_id, lat, lon, d.get('name_en', '')
         return None
     
-    # Process routes in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        route_results = list(executor.map(fetch_route_stops, ctb_routes[:50]))  # Limit to first 50 routes for speed
+    # Process ALL routes in parallel (no limit)
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] Fetching route-stop mappings...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        route_results = list(executor.map(fetch_route_stops, ctb_routes))
     
-    # Collect all stop IDs
-    all_stop_ids = set()
+    # Collect all unique stop IDs
     for stops in route_results:
-        for s in stops:
-            sid = s.get('stop')
+        for sid in stops:
             if sid and sid not in seen_stop_ids:
-                all_stop_ids.add(sid)
                 seen_stop_ids.add(sid)
     
-    log(f"[{datetime.now().strftime('%H:%M:%S')}] Fetching {len(all_stop_ids)} CTB stop coordinates...")
+    all_stop_ids = list(seen_stop_ids)
+    log(f"[{datetime.now().strftime('%H:%M:%S')}] Found {len(all_stop_ids)} unique CTB stops, fetching coordinates...")
     
-    # Fetch all stop info in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        stop_infos = list(executor.map(fetch_stop_info, list(all_stop_ids)[:200]))  # Limit to 200 stops
+    # Fetch ALL stop info in parallel (no limit)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        stop_infos = list(executor.map(fetch_stop_info, all_stop_ids))
     
     for info in stop_infos:
         if info:
             sid, lat, lon, name = info
-            if lat and lon:
-                ctb_stops[sid] = {'lat': lat, 'lon': lon, 'name_en': name}
+            ctb_stops[sid] = {'lat': lat, 'lon': lon, 'name_en': name}
     
     # Save cache
     json.dump({'ts': time.time(), 'stops': ctb_stops}, open(CTB_CACHE, 'w'))
