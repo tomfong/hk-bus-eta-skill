@@ -4,6 +4,7 @@ Version: 1.0.1
 Created: 2026-03-13 (with "Mr. Usagi - Tom's Agent")
 
 Changelog:
+- 2026-03-14 (v1.0.1): Added bounded latency budgets (~5s), timeout-aware stop matching retries, and deterministic no-result fallback messages.
 - 2026-03-14 (v1.0.1): Parallel API fetching with ThreadPoolExecutor, cache-first KMB stops, improved CTB cache strategy.
 - 2026-03-13 (v1.0.0): First stable release. Supports KMB/CTB/LWB with smart location association, coordinate clustering, destination fuzzy merge, terminus marking, circular route handling, and auto background sync.
 - 30s Golden Rule timeout enforced.
@@ -11,12 +12,18 @@ Changelog:
 import json, os, time, math, sqlite3, subprocess, sys, re
 from urllib.request import urlopen, Request
 from datetime import datetime, timezone, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeout
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "bus_stops.db")
 KMB_CACHE = os.path.join(BASE_DIR, "kmb_stops.json")
 CTB_CACHE = os.path.join(BASE_DIR, "ctb_stops.json")
+
+# Performance budgets (target: response within ~5s)
+TOTAL_BUDGET_SEC = 4.8
+MATCH_TIMEOUT_SEC = 1.0
+RETRY_MATCH_TIMEOUT_SEC = 0.8
+ETA_FETCH_TIMEOUT_SEC = 3.0
 
 def get_dist(lat1, lon1, lat2, lon2):
     try: return 6371*2*math.asin(math.sqrt(math.sin(math.radians(lat2-lat1)/2)**2+math.cos(math.radians(lat1))*math.cos(math.radians(lat2))*math.sin(math.radians(lon2-lon1)/2)**2))
@@ -25,7 +32,8 @@ def get_dist(lat1, lon1, lat2, lon2):
 def fetch(url):
     try:
         req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urlopen(req, timeout=5) as r: return json.loads(r.read().decode())
+        # tighter timeout to keep total query latency bounded
+        with urlopen(req, timeout=2.2) as r: return json.loads(r.read().decode())
     except: return None
 
 def cleanup_name(n): return (n or "").replace("<br>"," ").replace("<br/>"," ").strip()
@@ -125,6 +133,28 @@ def find_stops(route, pattern, lang="tc"):
     conn.close()
     return rows
 
+def normalize_pattern(s):
+    s = (s or "").strip().lower()
+    # remove common stop suffix/prefix noise for faster fuzzy retries
+    noise = [
+        "巴士轉乘站", "轉車站", "收費廣場", "巴士總站", "總站", "巴士站", "車站", "站",
+        "bus interchange", "interchange", "toll plaza", "bus terminus", "terminus", "station", "stop"
+    ]
+    for n in noise:
+        s = s.replace(n, "")
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+def find_stops_with_timeout(route, pattern, lang="tc", timeout_sec=MATCH_TIMEOUT_SEC):
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(find_stops, route, pattern, lang)
+        try:
+            return fut.result(timeout=timeout_sec)
+        except FuturesTimeout:
+            return []
+        except:
+            return []
+
 # English translations
 EN_TRANS = {
     "九巴(KMB)": "KMB",
@@ -138,16 +168,26 @@ EN_TRANS = {
     "分鐘": "min",
 }
 
-def fetch_parallel(urls_with_keys, max_workers=10):
+def fetch_parallel(urls_with_keys, max_workers=10, timeout_sec=None):
     """Fetch multiple URLs in parallel, returning dict of key -> result."""
     results = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(fetch, url): key for key, url in urls_with_keys.items()}
-        for future in as_completed(futures):
-            key = futures[future]
-            try:
-                results[key] = future.result()
-            except:
+        try:
+            iterator = as_completed(futures, timeout=timeout_sec)
+            for future in iterator:
+                key = futures[future]
+                try:
+                    results[key] = future.result()
+                except:
+                    results[key] = None
+        except FuturesTimeout:
+            # leave unfinished futures as None
+            pass
+
+        # fill missing keys as None
+        for f, key in futures.items():
+            if key not in results:
                 results[key] = None
     return results
 
@@ -183,7 +223,14 @@ def main(route, pattern, lang="tc"):
                 output.append("🔄 數據庫已超過 7 天，正在背景更新......")
             output.append("")
     
-    stops = find_stops(route, pattern, lang)
+    # fast-path stop matching with timeout
+    stops = find_stops_with_timeout(route, pattern, lang, MATCH_TIMEOUT_SEC)
+    if not stops:
+        # retry with normalized (shortened) keyword
+        norm = normalize_pattern(pattern)
+        if norm and norm != pattern.lower():
+            stops = find_stops_with_timeout(route, norm, lang, RETRY_MATCH_TIMEOUT_SEC)
+
     if not stops:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -196,15 +243,11 @@ def main(route, pattern, lang="tc"):
                 if get_dist(r[3], r[4], alat, alon) < 0.3:
                     stops.append({'id':r[0],'name_tc':cleanup_name(r[1]), 'name_en':cleanup_name(r[2]),'lat':r[3],'lon':r[4],'pick_drop':r[5],'company':r[6],'dir':['outbound','inbound'][r[7]-1]})
         if not stops:
+            # no-result fallback (avoid empty response)
             if lang == 'en':
-                c.execute('SELECT DISTINCT s.name_en FROM stops s JOIN routes r ON s.route_id=r.id WHERE r.route=? LIMIT 3', (route,))
-                s_list = [row[0] for row in c.fetchall()]
-                output.append(f"⚠️ No stop matching \"{pattern}\". {route} suggested stops: {', '.join(s_list)}...")
+                print("Service hours have passed / No route information found")
             else:
-                c.execute('SELECT DISTINCT s.name_tc FROM stops s JOIN routes r ON s.route_id=r.id WHERE r.route=? LIMIT 3', (route,))
-                s_list = [row[0] for row in c.fetchall()]
-                output.append(f"⚠️ 搵唔到匹配「{pattern}」嘅車站。{route} 建議站名：{', '.join(s_list)}...")
-            print("\n".join(output))
+                print("尾班車已過或未有班次資料")
             return
         conn.close()
 
@@ -233,7 +276,7 @@ def main(route, pattern, lang="tc"):
         api_urls[('ctb_route_stop', d)] = f"https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/{route}/{d}"
     
     # === Phase 2: Fetch all route-stop data in parallel ===
-    route_data = fetch_parallel(api_urls, max_workers=6)
+    route_data = fetch_parallel(api_urls, max_workers=6, timeout_sec=ETA_FETCH_TIMEOUT_SEC)
     
     # === Phase 3: Identify matching stops and collect ETA endpoints ===
     eta_urls = {}
@@ -285,7 +328,7 @@ def main(route, pattern, lang="tc"):
                             break
     
     # === Phase 4: Fetch all ETAs in parallel ===
-    eta_data = fetch_parallel(eta_urls, max_workers=10)
+    eta_data = fetch_parallel(eta_urls, max_workers=10, timeout_sec=ETA_FETCH_TIMEOUT_SEC)
     
     # === Phase 5: Process results ===
     results = {}
@@ -421,6 +464,14 @@ def main(route, pattern, lang="tc"):
                     output.append(f"• 往 {obj['name']}: " + ", ".join(times))
         output.append("")
     
+    # Ensure deterministic fallback when no ETA block is produced
+    if not any(line.startswith("🚌") for line in output):
+        if lang == 'en':
+            print("Service hours have passed / No route information found")
+        else:
+            print("尾班車已過或未有班次資料")
+        return
+
     print("\n".join(output))
     if needs_bg_sync:
         sync_script = os.path.join(BASE_DIR, "sync_bus_stops.py")

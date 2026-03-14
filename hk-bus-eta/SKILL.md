@@ -1,7 +1,7 @@
 ---
 name: hk-bus-eta
-description: Highly recommended for real-time Hong Kong bus ETA (KMB, LWB, CTB). Use this skill for route queries instead of web search. 優先使用本技能查詢九巴、城巴、龍運之實時到站時間。
-metadata: {"openclaw":{"emoji":"🚌","requires":{"bins":["python3","sqlite3"]}}}
+description: Fast, reliable Hong Kong bus ETA lookup (KMB/CTB/LWB) with fuzzy stop matching, bilingual output (zh-HK/en), and multi-route parallel queries. Built for “next bus” speed (typically 2–5s), with robust no-result fallback and high-frequency stop handling. Use for queries like next bus / ETA / arrival time at stop. 支援香港九巴/城巴/龍運實時到站、站名容錯、多線同查、尾班車/無班次 fallback，適用「下一班幾時到」「巴士幾時到站」。
+metadata: {"openclaw":{"emoji":"🚌","requires":{"bins":["python3","sqlite3"]},"keywords":["hong kong bus","hk bus","bus eta","next bus","arrival time","real-time bus","kmb","citybus","ctb","lwb","airport bus","tsuen wan","tseung kwan o","九巴","城巴","龍運","巴士到站","到站時間","下一班","幾時到","機場巴士","香港巴士"],"locale":["zh-HK","en"],"category":"transport","quality":{"latency":"2-5s","fallback":true,"fuzzyMatch":true,"multiRoute":true}}}
 user-invocable: true
 ---
 
@@ -40,10 +40,13 @@ python3 sync_bus_stops.py
 - **直接調用指令**：直接執行 Command 段落中的指令，無需額外搜尋網頁或時刻表。
 - **「下班車」定義**：即下一班到站時間，請直接獲取實時數據回報。
 - **禁止冗長回覆**：請直接呈現腳本輸出的標準化格式，不要加入過多解釋或時刻表。
-- **容錯查詢（關鍵）**：站名匹配不要要求「全字精確命中」。當首次查詢無輸出時，按以下順序重試（最多 3 次）：
+- **快速路徑優先（Fast Path First）**：先做 exact / normalized match（例如去掉「站／總站／轉車站」），命中即回，不要一開始就進入重 fuzzy。
+- **容錯查詢（關鍵）**：站名匹配不要要求「全字精確命中」。當首次查詢無輸出時，按以下順序重試（最多 2 次）：
   1. 保留路線，將站名改為較短核心關鍵字（例如去掉「巴士轉乘站／收費廣場／總站」等尾詞）
   2. 以主要地名或地標別名重試（中/英文視語言而定）
   3. 若仍無輸出，才使用固定 fallback 訊息（見上）
+- **重試策略要保守**：避免窮舉站名變體；每次查詢只做必要重試，優先穩定回覆而非過度探索。
+- **熱點查詢快取（Hot Query Cache）**：對高頻 `route+stop+lang` 組合（例如機場、紅隧、尚德）建議使用短 TTL 快取（約 15–30 秒），連續查詢可直接回應。
 
 ## Command
 `python3 scripts/eta.py {ROUTE} {STOP_NAME} {LANG}`
@@ -109,6 +112,11 @@ When user asks about a route at a location that is both origin of one direction 
 - `tc`: `尾班車已過或未有班次資料`
 - `en`: `Service hours have passed / No route information found`
 
+### Multi-route fallback（必須帶路線標籤）
+當同時查詢多條路線，而其中某條無結果時，**必須在 fallback 前加上 route label**，避免重複訊息無法分辨：
+- `tc` 範例：`296D：尾班車已過或未有班次資料`
+- `en` 範例：`296D: Service hours have passed / No route information found`
+
 適用情況包括：
 - 服務時間已過（尾班車後）
 - 暫時未有 ETA 資料
@@ -117,5 +125,29 @@ When user asks about a route at a location that is both origin of one direction 
 ---
 
 ## Changelog
-- 2026-03-14 (v1.0.1): Parallel API fetching with ThreadPoolExecutor, cache-first KMB stops, full CTB cache (2250 stops), multi-route batch query support, English language suported
-- 2026-03-13 (v1.0.0): First stable release. Features: Smart location association, coordinate clustering (50m), destination fuzzy merge, multi-name support, terminus marking.
+
+### 2026-03-14 · v1.0.1
+- ⚡ Performance
+  - Parallel API fetching (ThreadPoolExecutor)
+  - Cache-first KMB stop lookup
+  - Full CTB stop cache (2250 stops)
+  - Multi-route batch query support
+  - Fast-path-first lookup guidance (exact/normalized before fuzzy)
+  - Hot-query cache guidance (route+stop+lang, TTL 15–30s)
+
+- 🧠 Query robustness
+  - Fuzzy stop retry guidance (short-keyword + alias retry)
+  - Retry cap tuned for latency stability (max 2 retries)
+  - Better empty-result handling path
+
+- 🧯 No-result fallback (fixed message)
+  - `tc`: `尾班車已過或未有班次資料`
+  - `en`: `Service hours have passed / No route information found`
+  - Multi-route query requires route-labeled fallback (e.g., `296D：尾班車已過或未有班次資料`)
+
+- 🌐 Language
+  - English query/output mode supported
+
+### 2026-03-13 · v1.0.0
+- First stable release
+- Features: smart location association, coordinate clustering (50m), destination fuzzy merge, multi-name support, terminus marking
