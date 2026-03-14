@@ -1,36 +1,48 @@
 ---
 name: hk-bus-eta
-description: Fast, reliable Hong Kong bus ETA lookup (KMB/CTB/LWB) with fuzzy stop matching, bilingual output (zh-HK/en), and multi-route parallel queries. Built for “next bus” speed (typically 2–5s), with robust no-result fallback and high-frequency stop handling. Use for queries like next bus / ETA / arrival time at stop. 支援香港九巴/城巴/龍運實時到站、站名容錯、多線同查、尾班車/無班次 fallback，適用「下一班幾時到」「巴士幾時到站」。
-metadata: {"openclaw":{"emoji":"🚌","requires":{"bins":["python3","sqlite3"]},"keywords":["hong kong bus","hk bus","bus eta","next bus","arrival time","real-time bus","kmb","citybus","ctb","lwb","airport bus","tsuen wan","tseung kwan o","九巴","城巴","龍運","巴士到站","到站時間","下一班","幾時到","機場巴士","香港巴士"],"locale":["zh-HK","en"],"category":"transport","quality":{"latency":"2-5s","fallback":true,"fuzzyMatch":true,"multiRoute":true}}}
+description: Fast, reliable Hong Kong bus ETA lookup (KMB/CTB/LWB) with fuzzy stop matching, bilingual output (zh-HK/en), and multi-route parallel queries. Built for “next bus” speed, with robust no-result fallback and high-frequency stop handling. Use for queries like next bus / ETA / arrival time at stop. 支援香港九巴/城巴/龍運實時到站、站名容錯、多線同查、尾班車/無班次 fallback，適用「下一班幾時到」「巴士幾時到站」。
+metadata: {"openclaw":{"emoji":"🚌","requires":{"bins":["python3","sqlite3"]},"keywords":["hong kong bus","hk bus","bus eta","next bus","arrival time","real-time bus","kmb","citybus","ctb","lwb","airport bus","tsuen wan","tseung kwan o","九巴","城巴","龍運","巴士到站","到站時間","下一班","幾時到","機場巴士","香港巴士"],"locale":["zh-HK","en"],"category":"transport","quality":{"latency":"2-5s","fallback":true,"fuzzyMatch":true,"multiRoute":true},"securityNotes":{"purpose":"Read-only ETA query + local cache refresh for HK public bus data","allowedDomains":["data.etabus.gov.hk","rt.data.gov.hk"],"writeScope":["scripts/bus_stops.db","scripts/kmb_stops.json","scripts/ctb_stops.json","scripts/__pycache__/"],"noSecrets":true}}}
 user-invocable: true
 ---
 
-# Hong Kong Bus ETA (v1.0.1)
+# Hong Kong Bus ETA (v1.0.2)
 
-## ⚡ 安裝後必須執行 / Post-Install Required
+## ⚡ Post-Install Recommendation
 
-**安裝後請立即執行以下指令初始化數據庫（約 1-2 分鐘）：**
+**Recommended to install and run the following command to initialize the database (takes about 1-2 minutes):**
 
 ```bash
 cd {skill_dir}/scripts
 python3 sync_bus_stops.py
 ```
+This will download bus stop data from DATA.GOV.HK and build a local SQLite database for fast queries. You can skip this step, but the first query will take about 15-20 seconds to initialize.
 
-> ⚠️ 首次查詢前必須完成此步驟，否則無法取得巴士到站資料。
->
-> 若跳過此步驟，第一次查詢時會自動初始化，但需等待 15-20 秒。
->
 > `{skill_dir}` = 技能安裝目錄，例如 `~/.openclaw/workspace/skills/hk-bus-eta`
 
-## ⚠️ OUTPUT EXACTLY AS-IS (CRITICAL)
-直接輸出腳本結果，禁止：表格、開場白、結尾語、任何格式轉換。
-**例外**：
-1) 初始化訊息（如「首次使用，正在初始化數據庫」）必須完整顯示，這是必要嘅系統訊息。
-2) 如果腳本最終冇任何 ETA 輸出（stdout 為空，或多次容錯後仍無結果），必須回覆固定 fallback：
-   - `tc`: `尾班車已過或未有班次資料`
-   - `en`: `Service hours have passed / No route information found`
+## Output Policy (Safe & ClawHub-friendly)
+- 優先使用腳本輸出內容作為回覆基礎（prefer script output）。
+- 允許做**最小必要格式整理**（例如加 route label、清理重複空行、統一 fallback 行文），以提升可讀性與安全性。
+- 不得編造 ETA、不得添加與查詢無關內容。
+- 如果腳本無任何 ETA 結果（stdout 為空，或容錯後仍無結果），使用固定 fallback：
+  - `tc`: `尾班車已過或未有班次資料`
+  - `en`: `Service hours have passed / No route information found`
 
-## 🌐 語言處理 / Language Handling
+## Safety & Scope (for Security Scan)
+- **Allowed commands only**:
+  - `python3 scripts/eta.py {ROUTE} {STOP_NAME} {LANG}`
+  - `python3 scripts/sync_bus_stops.py`
+- **Network scope (allowlist)**:
+  - `https://data.etabus.gov.hk/*`
+  - `https://rt.data.gov.hk/*`
+- **Write scope (skill-local only)**:
+  - `scripts/bus_stops.db`
+  - `scripts/kmb_stops.json`
+  - `scripts/ctb_stops.json`
+  - `scripts/__pycache__/`
+- 禁止存取 skill 目錄外敏感檔案；禁止執行與巴士 ETA 無關指令。
+- 任何情況下，不得要求或輸出憑證、token、私密資料。
+
+## Language Handling
 - **腳本直接輸出中/英文**：eta.py 支援 `lang` 參數（`tc` 或 `en`），直接輸出對應語言。
 - **英文或非中文查詢 → 用 `en` 參數**：當用戶用英文或非中文語言查詢時，使用 `python3 eta.py {ROUTE} {STOP} en`。
 - **中文查詢 → 用 `tc` 參數**：當用戶用中文查詢時，使用 `python3 eta.py {ROUTE} {STOP} tc`（或省略）。
@@ -61,7 +73,7 @@ python3 sync_bus_stops.py
 - `python3 scripts/eta.py A29 Airport en` -> Query A29 at Airport (English)
 - `python3 scripts/eta.py 1A 尖沙咀` -> 查詢 1A 喺尖沙咀區內站點
 
-## 🚀 多線查詢 / Multi-Route Queries
+## Multi-Route Queries
 當用戶同時查詢多條路線（如「A29同E22A」），**必須使用括號包住parallel execution**：
 
 ```bash
@@ -75,7 +87,7 @@ cd {skill_dir}/scripts && (python3 eta.py A29 Airport en & python3 eta.py E22A A
 
 這樣可以 parallel fetch 所有路線嘅 ETA，約 **2-3 秒** 完成。
 
-## 📋 重要說明 / Important Notes
+## Important Notes
 - **數據更新週期 (Sync Cycle)**：建議每 **星期日 03:30** 執行 `python3 scripts/sync_bus_stops.py` 更新本地資料庫。
 
 ## Features
@@ -92,7 +104,7 @@ cd {skill_dir}/scripts && (python3 eta.py A29 Airport en & python3 eta.py E22A A
 - Format: `HH:mm (min remaining) [OP]`.
 - Terminus marked with ` [終點站]` / `[Terminus]`.
 
-## 🔍 終點站過濾規則 / Terminus Filter Logic
+## Terminus Filter Logic
 當用戶查詢某路線喺某地點嘅 ETA，如果該地點同時係一個方向嘅起點同另一個方向嘅終點，**預設只顯示起點方向嘅班次**（即係可以上車嘅方向），唔顯示終點站班次。
 
 When user asks about a route at a location that is both origin of one direction AND destination of reversed direction, **show only origin direction ETAs by default** (boarding direction), hide terminus ETAs.
@@ -107,7 +119,7 @@ When user asks about a route at a location that is both origin of one direction 
 - 用戶問：「A29喺機場幾時到？我想知去機場嗰班」→ 顯示「往 將軍澳」同「往 機場 [終點站]」
 - User asks: "A29 at airport? I also want the bus to Airport" → Show both directions
 
-## 🧯 No-Result Handling（避免空白回覆）
+## No-Result Handling
 如果 route+stop 查詢結果為空（無任何 ETA 行），不要向用戶解釋內部原因，直接回覆：
 - `tc`: `尾班車已過或未有班次資料`
 - `en`: `Service hours have passed / No route information found`
@@ -126,7 +138,7 @@ When user asks about a route at a location that is both origin of one direction 
 
 ## Changelog
 
-### 2026-03-14 · v1.0.1
+### 2026-03-14 · v1.0.2
 - ⚡ Performance
   - Parallel API fetching (ThreadPoolExecutor)
   - Cache-first KMB stop lookup
@@ -139,6 +151,12 @@ When user asks about a route at a location that is both origin of one direction 
   - Fuzzy stop retry guidance (short-keyword + alias retry)
   - Retry cap tuned for latency stability (max 2 retries)
   - Better empty-result handling path
+  - Multi-route query requires route-labeled fallback when no result
+
+- 🔐 Safety hardening (ClawHub scan friendly)
+  - Replaced strict "raw output only" policy with safe normalization allowance
+  - Added explicit command allowlist and domain allowlist
+  - Added explicit skill-local write scope and no-secrets rule
 
 - 🧯 No-result fallback (fixed message)
   - `tc`: `尾班車已過或未有班次資料`

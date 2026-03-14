@@ -13,7 +13,7 @@
 ## Technical Overview | 技術概述
 
 **Skill Name:** `hk-bus-eta`  
-**Version:** 1.0.1  
+**Version:** 1.0.2  
 **Last Updated:** 2026-03-14  
 **Compatibility:** OpenClaw and compatible AI agents
 

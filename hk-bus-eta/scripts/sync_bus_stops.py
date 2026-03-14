@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Hong Kong Bus Stops Sync Script
-Version: 1.0.1
+Version: 1.0.2
 
 Created: 2026-03-13
 - Syncs TD JSON data
 - Pre-builds CTB coordinate cache (FULL CACHE)
 - Data Dictionary compliant (stopPickDrop, routeSeq)
 
-Updated: 2026-03-14 (v1.0.1)
+Updated: 2026-03-14 (v1.0.2)
 - Full CTB cache: all routes, all stops (no more limits)
 - Increased parallelism for faster sync
 """

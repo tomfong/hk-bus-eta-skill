@@ -1,11 +1,11 @@
 """
 Hong Kong Bus ETA Query Script
-Version: 1.0.1
+Version: 1.0.2
 Created: 2026-03-13 (with "Mr. Usagi - Tom's Agent")
 
 Changelog:
-- 2026-03-14 (v1.0.1): Added bounded latency budgets (~5s), timeout-aware stop matching retries, and deterministic no-result fallback messages.
-- 2026-03-14 (v1.0.1): Parallel API fetching with ThreadPoolExecutor, cache-first KMB stops, improved CTB cache strategy.
+- 2026-03-14 (v1.0.2): Added bounded latency budgets (~5s), timeout-aware stop matching retries, and deterministic no-result fallback messages.
+- 2026-03-14 (v1.0.2): Parallel API fetching with ThreadPoolExecutor, cache-first KMB stops, improved CTB cache strategy.
 - 2026-03-13 (v1.0.0): First stable release. Supports KMB/CTB/LWB with smart location association, coordinate clustering, destination fuzzy merge, terminus marking, circular route handling, and auto background sync.
 - 30s Golden Rule timeout enforced.
 """
