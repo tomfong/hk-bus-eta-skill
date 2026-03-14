@@ -126,4 +126,4 @@ Built with Mr. Usagi (Tom's OpenClaw Agent)
 
 ---
 
-_SIMPLE DEV, SIMPLER WORLD_
+_SIMPLE DEV · SIMPLER WORLD_
