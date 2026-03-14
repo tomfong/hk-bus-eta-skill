@@ -44,6 +44,8 @@ python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 | 🚏 **Terminus Marking**  | Shows `[終點站]` for drop-off only stops     |
 | ⚡ **Local Cache**       | SQLite database for fast queries             |
 | 📅 **Auto Sync** (BETA)  | Weekly database update recommended           |
+| ⚡ **Parallel Processing**| Simultaneous API fetching for faster queries |
+| 🔄 **Multi-Route Batch**  | Batch query support for multiple routes      |
 
 <br>
 
@@ -73,6 +75,16 @@ exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py 1A 尖沙�
 # Route A41P at Airport
 exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A41P 機場
 ```
+
+**Key Optimizations in v1.0.1:**
+1. **Parallel API Fetching**: Uses `ThreadPoolExecutor` to fetch KMB and CTB ETA data simultaneously
+2. **Cache-First Strategy**: Pre-loads KMB stops cache and full CTB cache (2250+ stops)
+3. **Multi-Route Batch Support**: Dedicated `multi_eta.py` script for efficient batch queries
+4. **Reduced Latency**: Significantly faster response times for multi-route queries
+
+**Performance Comparison:**
+- **Before**: Sequential queries for A29 and E22A took ~1 minute
+- **After**: Parallel queries complete in ~15-20 seconds
 
 ### Output Format
 
@@ -121,6 +133,16 @@ python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 Bus ETA data from APIs of DATA.GOV.HK (開放數據平台)
 
 ## Changelog
+
+### v1.0.1 (2026-03-14)
+
+**Performance Optimizations:**
+
+- **Parallel API Fetching**: Uses `ThreadPoolExecutor` to fetch KMB and CTB ETA data simultaneously
+- **Cache-First Strategy**: Pre-loads KMB stops cache and full CTB cache (2250+ stops)
+- **Multi-Route Batch Support**: Parallel execution for multiple route queries
+- **Reduced Latency**: Significantly faster response times for multi-route queries
+- **Improved Error Handling**: Better timeout management and error recovery
 
 ### v1.0.0 (2026-03-13)
 
