@@ -1,9 +1,6 @@
 # 🚌 Hong Kong Bus ETA
 
-> **BETA** - This skill is under active development and may change.
-
-Real-time Hong Kong bus arrival predictions for KMB, LWB, and Citybus (CTB).
-
+Real-time Hong Kong bus arrival predictions for KMB, LWB and Citybus.
 
 ## Installation
 
@@ -13,72 +10,58 @@ Real-time Hong Kong bus arrival predictions for KMB, LWB, and Citybus (CTB).
 clawhub install hk-bus-eta
 ```
 
-### From Source
+### From GitHub Source
 
 ```bash
-clawhub install https://github.com/tomfong/hk-bus-eta-skill
+clawhub install https://github.com/tomfong/hk-bus-eta-skill --path hk-bus-eta --as hk-bus-eta
 ```
-
-
-
-## Quick Start
-
-Ask your OpenClaw agent in natural language:
-
-| Example Query                            | Result                                     |
-| ---------------------------------------- | ------------------------------------------ |
-| "When will bus 1A arrive at Star Ferry?" | ETA for route 1A at Star Ferry area        |
-| "KMB 68X to Yuen Long"                   | Next buses for route 68X heading Yuen Long |
-| "Next 98D at Hang Hau"                   | ETA at nearest Hang Hau stops              |
-| "A29 at the airport"                     | LWB route A29 at airport terminals         |
-
-
-
-## Features
-
-| Feature                 | Description                                  |
-| ----------------------- | -------------------------------------------- |
-| 🚌 **Multi-Operator**    | KMB, Citybus (CTB), LWB, and joint routes    |
-| 🔍 **Smart Location**    | Search by area name (e.g., "尚德", "寶琳站") |
-| 📍 **Stop Clustering**   | Merges stops within 50m radius               |
-| 🔄 **Destination Merge** | Handles joint-route destination variations   |
-| 🚏 **Terminus Marking**  | Shows `[終點站]` for drop-off only stops     |
-| ⚡ **Local Cache**       | SQLite database for fast queries             |
-| 📅 **Auto Sync**         | Weekly database update recommended           |
-
-
 
 ## First Run
 
 ⏱️ **First-time initialization takes ~10-30 seconds** to download and build the bus stops database (~20MB).
-
 Subsequent queries are instant.
 
-You are recommended to run the following command once before first use:
+**You are strongly recommended to run the following command once before first use:**
+
+```bash
+python3 <DIRECTORY_OF_SKILLS>/hk-bus-eta/scripts/sync_bus_stops.py
+```
+
+**Example**
 
 ```bash
 python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 ```
 
+## Features
 
+| Feature                  | Description                                  |
+| ------------------------ | -------------------------------------------- |
+| 🚌 **Multi-Operator**    | KMB, Citybus, LWB, and joint routes          |
+| 🔍 **Smart Location**    | Search by area name (e.g., "尚德", "寶琳站") |
+| 📍 **Stop Clustering**   | Merges stops within 50m radius               |
+| 🔄 **Destination Merge** | Handles joint-route destination variations   |
+| 🚏 **Terminus Marking**  | Shows `[終點站]` for drop-off only stops     |
+| ⚡ **Local Cache**       | SQLite database for fast queries             |
+| 📅 **Auto Sync** (BETA)  | Weekly database update recommended           |
 
-## Usage
+<br>
 
-### Natural Language
+<img src="./docs/images/example01.PNG" width="400" alt="Bus ETA Example">
 
-Just ask in Cantonese, English, or mixed:
+### How to Use?
 
-- "下班 68X 幾時到？"
-- "When is the next A29 from Tung Chung?"
-- "城巴 11 去中環邊個站最近？"
+**Natural Language** Just ask in Cantonese, English, or mixed:
 
-### Direct Command
+- "下一班 1A 幾時到中間道？"
+- "When is the next A29 from Airport?"
+- "城巴 11 喺中環有邊幾個站？巴士最快幾時到？"
+
+**Direct Command** The skill supports direct commands for query.
 
 ```bash
-exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py {ROUTE} {STOP_NAME} [USER_LAT] [USER_LON] [LANG]
+exec python3 <DIRECTORY_OF_SKILLS>/hk-bus-eta/scripts/eta.py {ROUTE} {STOP_NAME} [USER_LAT] [USER_LON] [LANG]
 ```
-
-**Examples:**
 
 ```bash
 # Route A29 at Po Lam Station
@@ -91,8 +74,7 @@ exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py 1A 尖沙�
 exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A41P 機場
 ```
 
-
-## Output Format
+### Output Format
 
 ```
 🚌 路線 1A - 尖沙咀碼頭
@@ -110,18 +92,21 @@ exec python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A41P 機場
 - Google Maps link for each stop
 - Operator badge (KMB/CTB/LWB)
 
-
-
 ## Data Sync
 
 Run weekly to keep bus stop data fresh:
 
 ```bash
+python3 <DIRECTORY_OF_SKILLS>/hk-bus-eta/scripts/sync_bus_stops.py
+```
+
+**Example**
+
+```bash
 python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 ```
 
-**Recommended cron schedule:** Every Sunday at 03:30
-
+**Recommended CRON schedule:** Every Sunday at 03:30
 
 ## Requirements
 
@@ -131,10 +116,9 @@ python3  ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 | `curl`      | API calls            |
 | `sqlite3`   | Local cache database |
 
-
 ## Data Source
 
-Bus ETA data from Hong Kong Transport Department open data APIs.
+Bus ETA data from APIs of DATA.GOV.HK (開放數據平台)
 
 ## Changelog
 
@@ -147,17 +131,15 @@ First stable release.
 - Destination fuzzy merge
 - Multi-name support
 - Terminus marking
-- LWB support
-- Auto background sync (7-day cycle)
-- Auto initialization on first run
+- Auto background sync (7-day cycle) (BETA)
 - 30s timeout enforcement
-
-## License
-
-MIT License - See [LICENSE](LICENSE) for details.
 
 ## Author
 
 **Tom FONG** - [GitHub](https://github.com/tomfong)
 
 Built with Mr. Usagi (Tom's OpenClaw Agent)
+
+---
+
+_SIMPLE DEV, SIMPLER WORLD_
