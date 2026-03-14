@@ -186,7 +186,7 @@ exec python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A21 Airport 
 
 ## 📈 Changelog | 更新日誌
 
-### v1.0.1 (2026-03-14) - Performance Optimizations
+### v1.0.2 (2026-03-14) - Performance Optimizations
 **Performance Optimizations:**
 
 - **Parallel API Fetching**: Uses `ThreadPoolExecutor` to fetch KMB and CTB ETA data simultaneously
