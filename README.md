@@ -289,4 +289,4 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-_SIMPLE DEV, SIMPLER WORLD_
+_SIMPLE DEV · SIMPLER WORLD_
