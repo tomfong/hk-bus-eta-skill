@@ -47,7 +47,7 @@ python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 
 <br>
 
-<img src="./docs/images/example01.PNG" width="300" alt="Bus ETA Example">
+<img src="./docs/images/example01.PNG" width="400" alt="Bus ETA Example">
 
 ### How to Use?
 

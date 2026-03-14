@@ -39,9 +39,7 @@ Full skill documentation is available in the [`hk-bus-eta/`](hk-bus-eta/) folder
 
 <br>
 
-<img src="./hk-bus-eta/docs/images/example01.PNG" width="300" alt="Bus ETA Example">
-
-<br>
+<img src="./hk-bus-eta/docs/images/example01.PNG" width="400" alt="Bus ETA Example">
 
 👉🏼 [View detailed GUIDES and EXAMPLES](./hk-bus-eta/README.md#features) 👈🏼
 
