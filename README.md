@@ -233,6 +233,21 @@ Bus ETA data from APIs of [DATA.GOV.HK](https://data.gov.hk) (開放數據平台
 - **Parallel API Calls**: Simultaneous fetching from KMB and Citybus APIs
 - **Fuzzy Matching**: Smart location association with 50m clustering
 - **Bilingual Support**: Chinese (Traditional) and English interfaces
+  
+## Contributing
+
+* Sponsor the project.
+  
+  [![GitHub Sponsor](https://img.shields.io/badge/sponsor-30363D?style=flat&logo=GitHub-Sponsors&logoColor=#white)](https://github.com/sponsors/tomfong?frequency=one-time)
+  [![Buy me a Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/tomfong)
+
+* Star the project.
+
+  [![Stars](https://img.shields.io/github/stars/tomfong/hk-bus-eta-skill?style=flat)](https://github.com/tomfong/hk-bus-eta-skill/stargazers)
+
+* Open issues to report bugs or share any new ideas.
+
+  [![Issues](https://img.shields.io/github/issues/tomfong/hk-bus-eta-skill?style=flat)](https://github.com/tomfong/hk-bus-eta-skill/issues)
 
 ## License
 
