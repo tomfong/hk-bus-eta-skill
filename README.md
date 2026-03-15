@@ -204,8 +204,7 @@ exec python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/eta.py A21 Airport 
 
 ## Technical Details
 
-### Data Sync | 數據同步
-Run weekly to keep bus stop data fresh:
+### Data Sync
 
 ```bash
 python3 <DIRECTORY_OF_SKILLS>/hk-bus-eta/scripts/sync_bus_stops.py
@@ -226,7 +225,7 @@ python3 ~/.openclaw/workspace/skills/hk-bus-eta/scripts/sync_bus_stops.py
 | `curl`      | API calls            |
 | `sqlite3`   | Local cache database |
 
-### Data Source | 數據來源
+### Data Source
 Bus ETA data from APIs of [DATA.GOV.HK](https://data.gov.hk) (開放數據平台)
 
 **Architecture:**
@@ -234,54 +233,6 @@ Bus ETA data from APIs of [DATA.GOV.HK](https://data.gov.hk) (開放數據平台
 - **Parallel API Calls**: Simultaneous fetching from KMB and Citybus APIs
 - **Fuzzy Matching**: Smart location association with 50m clustering
 - **Bilingual Support**: Chinese (Traditional) and English interfaces
-
-## SEO Keywords
-
-**Primary Keywords:**
-- Hong Kong bus ETA
-- Real-time bus arrival Hong Kong
-- KMB bus arrival time
-- Citybus ETA
-- Hong Kong bus tracking
-- Next bus Hong Kong
-
-**Chinese Keywords:**
-- 香港巴士到站時間
-- 九巴到站時間
-- 城巴實時到站
-- 龍運巴士ETA
-- 下一班巴士幾時到
-- 巴士到站查詢
-
-**Technical Keywords:**
-- OpenClaw skill
-- AI agent bus ETA
-- Python bus API
-- Hong Kong transport API
-- DATA.GOV.HK integration
-- SQLite bus database
-
-## GitHub Topics
-
-```
-hong-kong-bus
-bus-eta
-real-time-transport
-hong-kong-transport
-kmb
-citybus
-lwb
-openclaw
-ai-agent
-python
-transport-api
-data-gov-hk
-public-transport
-hong-kong
-bus-tracking
-arrival-time
-next-bus
-```
 
 ## License
 
