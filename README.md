@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.x](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/downloads/)
 [![OpenClaw Compatible](https://img.shields.io/badge/OpenClaw-Compatible-green.svg)](https://github.com/openclaw/openclaw)
-[![Hong Kong Bus](https://img.shields.io/badge/Hong%20Kong-Bus-red.svg)](https://data.gov.hk)
+[![ClawHub Available](https://img.shields.io/badge/ClawHub-Available-green.svg)](https://clawhub.ai/tomfong/hk-bus-eta)
 [![Last Updated](https://img.shields.io/badge/Last%20Updated-2026--03--14-brightgreen.svg)](https://github.com/tomfong/hk-bus-eta-skill)
 
 > 🚌 **Real-time Hong Kong bus arrival predictions** for KMB, LWB, and Citybus | **香港九巴、龍運、城巴實時到站時間查詢**
